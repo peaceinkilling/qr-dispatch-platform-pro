@@ -126,7 +126,14 @@ class AdminGateMiddleware(BaseHTTPMiddleware):
         if not is_admin_protected:
             return await call_next(request)
 
-        if request.session.get("admin_authenticated") is True:
+        try:
+            is_admin_authenticated = request.session.get("admin_authenticated") is True
+        except Exception:
+            # Corrupt/old session cookie should never crash the app.
+            # Treat it as logged out and force clean login.
+            is_admin_authenticated = False
+
+        if is_admin_authenticated:
             # Logged-in admin allowed pages:
             # - dashboard
             # - create new CHT
