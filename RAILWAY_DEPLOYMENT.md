@@ -13,6 +13,8 @@ Upload the full `qr_dispatch_platform_pro` project, including:
 - `static/`
 - `requirements.txt`
 - `Procfile`
+- `nixpacks.toml` (explicit gunicorn start + `$PORT`)
+- `runtime.txt` (Python 3.11 for stable builds)
 - `railway.json`
 - `README.md`
 
@@ -50,7 +52,7 @@ git push
 
 1. Open Railway -> New Project -> Deploy from GitHub repo.
 2. Select this repo.
-3. Railway detects Python app and uses `Procfile`.
+3. Railway uses Nixpacks; `nixpacks.toml` + `Procfile` start **gunicorn** on `0.0.0.0:$PORT`.
 
 ---
 
@@ -87,6 +89,22 @@ In Railway service variables, add:
    - `https://<your-app>.up.railway.app/admin/login`
 4. Login and create a CHT.
 5. Open share/QR and test scan from phone.
+
+---
+
+## Troubleshooting: Healthcheck failed on `/healthz`
+
+Common causes:
+
+1. **`DISPATCH_DB_PATH=/data/dispatch.db` but no volume** — creating `/data` fails and the app never starts.  
+   **Fix:** Add a Railway volume mounted at `/data`, **or** remove `DISPATCH_DB_PATH` (app falls back to `./data` in the image; data may reset on redeploy).  
+   The latest code also **falls back automatically** to `./data` if `/data` is not writable.
+
+2. **Wrong start command** — nothing listening on `$PORT`.  
+   **Fix:** In Railway → Service → Settings → Deploy → **Custom Start Command**:  
+   `gunicorn app:app -k uvicorn.workers.UvicornWorker --workers 2 --bind 0.0.0.0:$PORT`
+
+3. After fixing, **Redeploy** and check **Deploy Logs** (not only Build Logs).
 
 ---
 

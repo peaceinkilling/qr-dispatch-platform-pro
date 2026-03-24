@@ -49,6 +49,27 @@ DB_PATH = Path(
     )
 )
 
+
+def _resolve_writable_db_path() -> Path:
+    """
+    Prefer DISPATCH_DB_PATH when the directory is writable (e.g. Railway volume at /data).
+    If /data is missing or not writable, fall back to ./data under the app so the service
+    still boots and healthchecks pass (data may reset on redeploy without a volume).
+    """
+    global DB_PATH
+    chosen = Path(DB_PATH)
+    try:
+        chosen.parent.mkdir(parents=True, exist_ok=True)
+        test = chosen.parent / ".write_test"
+        test.write_text("ok", encoding="utf-8")
+        test.unlink(missing_ok=True)
+        return chosen
+    except OSError:
+        fallback = BASE_DIR / "data" / "dispatch.db"
+        fallback.parent.mkdir(parents=True, exist_ok=True)
+        DB_PATH = fallback
+        return fallback
+
 PUBLIC_BASE_URL = os.environ.get("PUBLIC_BASE_URL", "").strip().rstrip("/")
 DISPATCH_TABLE = "dispatches"
 LOCATIONS_TABLE = "locations"
@@ -95,7 +116,7 @@ class AdminGateMiddleware(BaseHTTPMiddleware):
             path.startswith("/dispatch/")
             or path.startswith("/qr/")
             or path.startswith("/static/")
-            or path in ("/admin/login", "/admin/logout")
+            or path in ("/admin/login", "/admin/logout", "/healthz")
         )
 
         if is_public:
@@ -749,7 +770,7 @@ def hydrate_row(row: sqlite3.Row, *, public: bool) -> dict:
 
 
 def init_db() -> None:
-    DB_PATH.parent.mkdir(parents=True, exist_ok=True)
+    _resolve_writable_db_path()
     with closing(get_conn()) as conn:
         # Create table if missing, then add any missing columns (simple migration).
         conn.executescript(
