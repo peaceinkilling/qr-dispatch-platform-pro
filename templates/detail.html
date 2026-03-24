@@ -1,0 +1,743 @@
+{% extends "base.html" %}
+
+{% block title %}Dispatch — Dispatch QR{% endblock %}
+
+{% block header %}
+<div class="detail-pixel-header flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between mb-1">
+  <div>
+    <div class="detail-pixel-kicker">Public dispatch</div>
+    <div class="detail-pixel-page-title detail-pixel-page-title--brand">Dispatch</div>
+    <p class="detail-pixel-subtitle mt-1">Receiving-side view · route &amp; shipment context</p>
+  </div>
+  <div class="detail-pixel-status {{ item.status_meta.pill }}">
+    <span class="h-2.5 w-2.5 rounded-full {{ item.status_meta.dot }}"></span>
+    <span>{{ item.status_meta.label }}</span>
+  </div>
+</div>
+{% endblock %}
+
+{% block content %}
+{% set _skin_i = ((item.public_token|default(''))|length) % 4 %}
+{% set hero_skins = ['wave', 'aurora', 'dusk', 'reef'] %}
+<div class="detail-pixel-scope">
+  <div id="detailRoot" class="detail-preview detail-pixel-surface p-4 sm:p-6 lg:p-8 mb-4 detail-pixel-reveal" data-qr="{{ qr_url }}" data-vehicle="{{ item.vehicle_number | e }}">
+    <!-- Hero: vehicle + scan context -->
+    <div class="detail-hero detail-hero--{{ hero_skins[_skin_i] }} pb-5 border-b detail-hero-divider">
+      <div class="detail-pixel-vehicle detail-pixel-vehicle--{{ hero_skins[_skin_i] }}">{{ item.vehicle_number }}</div>
+      <p class="detail-pixel-lede mt-2">
+        <span class="detail-pixel-lede-label">To</span>
+        <span class="detail-pixel-lede-accent">{{ item.to_display }}</span>
+        <span class="detail-pixel-lede-dot" aria-hidden="true">·</span>
+        <span class="detail-pixel-lede-label">Dispatched</span>
+        <span class="detail-pixel-lede-strong">{{ item.dispatch_display }}</span>
+      </p>
+
+      <dl class="detail-meta-grid mt-4">
+        <div class="detail-meta-cell">
+          <dt class="detail-meta-label">{{ item.station_state_name if item.station_state_name else 'District' }}</dt>
+          <dd class="detail-meta-value">{{ item.station_district if item.station_district else '—' }}</dd>
+        </div>
+        {% if item.destination_pincode %}
+        <div class="detail-meta-cell">
+          <dt class="detail-meta-label">PIN</dt>
+          <dd class="detail-meta-value">{{ item.destination_pincode }}</dd>
+        </div>
+        {% endif %}
+        {% if item.station_coords_display %}
+        <div class="detail-meta-cell">
+          <dt class="detail-meta-label">GPS</dt>
+          <dd class="detail-meta-value detail-meta-value--mono">{{ item.station_coords_display }}</dd>
+        </div>
+        {% endif %}
+        {% if item.distance_display %}
+        <div class="detail-meta-cell">
+          <dt class="detail-meta-label">From depot</dt>
+          <dd class="detail-meta-value">{{ item.distance_display }}</dd>
+        </div>
+        {% endif %}
+        <div class="detail-meta-cell">
+          <dt class="detail-meta-label">ICN</dt>
+          <dd class="detail-meta-value">{{ item.icn_number if item.icn_number else '—' }}</dd>
+        </div>
+        {% if item.nature_of_items_display %}
+        <div class="detail-meta-cell">
+          <dt class="detail-meta-label">Nature of Stores</dt>
+          <dd class="detail-meta-value text-sky-200 font-semibold">{{ item.nature_of_items_display }}</dd>
+        </div>
+        {% endif %}
+      </dl>
+    </div>
+
+    <!-- Map directly under meta tiles; QR on the right; print below QR (wide screens) -->
+    <div class="detail-map-qr-split mt-6 grid grid-cols-1 lg:grid-cols-[minmax(0,1fr)_minmax(240px,300px)] gap-5 lg:gap-6 lg:items-stretch">
+      <div class="detail-map-column detail-panel detail-pixel-panel glass-strong p-4 sm:p-5 rd-24 min-w-0 flex flex-col lg:min-h-[20rem]">
+        <div class="flex flex-wrap items-end justify-between gap-2 shrink-0">
+          <div>
+            <div class="detail-panel-label">Location preview</div>
+            <div class="title detail-location-title font-bold mt-1">{{ item.to_display }}</div>
+          </div>
+          <span class="detail-map-hint hidden sm:inline">Tap map for full screen</span>
+        </div>
+
+        <div
+          id="inlineBasemapBar"
+          class="map-basemap-bar hidden mt-3 shrink-0"
+          role="toolbar"
+          aria-label="Map appearance"
+        >
+          <span class="map-basemap-bar-label">Map type</span>
+          <div class="map-basemap-group">
+            <button type="button" class="map-basemap-btn" data-basemap="streets" aria-pressed="true">Street</button>
+            <button type="button" class="map-basemap-btn" data-basemap="terrain" aria-pressed="false">Terrain</button>
+            <button type="button" class="map-basemap-btn" data-basemap="satellite" aria-pressed="false">Satellite</button>
+            <button type="button" class="map-basemap-btn" data-basemap="road" aria-pressed="false">Road</button>
+          </div>
+        </div>
+
+        <div
+          class="detail-map-stage detail-map-stage--split detail-map-frame mt-4 relative overflow-hidden rd-22 border cursor-pointer bg-slate-900/90 flex-1 min-h-[280px]"
+          id="locationMapWrap"
+          title="Tap map or Full map for large road map"
+        >
+          <div
+            class="location-map-fallback absolute inset-0 z-0 bg-slate-900"
+            style="background-image: url('https://upload.wikimedia.org/wikipedia/commons/thumb/7/7b/India_states_and_union_territories.svg/800px-India_states_and_union_territories.svg.png'); background-size: contain; background-position: center; background-repeat: no-repeat; opacity: 0.95;"
+          ></div>
+          <button
+            type="button"
+            id="detailMapExpandBtn"
+            class="absolute top-3 right-3 z-[1000] btn btn-primary btn-sm"
+          >
+            Full map
+          </button>
+          <div
+            id="locationMap"
+            class="absolute inset-0 z-[1]"
+            data-lat="{{ item.station_lat if item.station_lat is not none else '' }}"
+            data-lng="{{ item.station_lng if item.station_lng is not none else '' }}"
+            data-name="{{ item.to_display }}"
+          ></div>
+
+
+          <div class="absolute bottom-3 left-3 detail-map-chip pointer-events-none">
+            <div class="muted2 text-sm">Location</div>
+            <div class="title text-sm font-semibold mt-0.5">{{ item.to_display }}</div>
+          </div>
+        </div>
+      </div>
+
+      <aside class="detail-qr-aside flex flex-col gap-4 lg:min-h-0" aria-label="Dispatch QR code">
+        <div class="detail-pixel-section-label">Dispatch QR</div>
+        <p class="detail-qr-copy-text text-sm leading-relaxed">
+          Scan the code to reopen this dispatch. Tap elsewhere on the page for a full-screen QR.
+        </p>
+        <div class="detail-qr-tile flex flex-col items-center justify-center shrink-0 w-full max-w-[280px] mx-auto lg:mx-0">
+          <div class="detail-qr-glow" aria-hidden="true"></div>
+          <img
+            src="{{ qr_url }}"
+            alt="Dispatch QR code"
+            class="detail-qr-img w-52 sm:w-56 lg:w-full max-w-[260px] h-auto"
+            width="256"
+            height="256"
+          />
+          <span class="detail-qr-caption">Scan to open</span>
+        </div>
+        <div class="flex flex-col gap-2 w-full max-w-[280px] mx-auto lg:mx-0">
+          <button
+            type="button"
+            class="btn btn-ghost detail-pixel-btn w-full"
+            id="printQrBtn"
+            data-qr="{{ qr_url }}"
+            data-vehicle="{{ item.vehicle_number | e }}"
+          >
+            Print QR
+          </button>
+          <button
+            type="button"
+            class="btn btn-primary detail-pixel-btn w-full"
+            id="openQrBtn"
+            data-qr="{{ qr_url }}"
+          >
+            Open full-screen QR
+          </button>
+        </div>
+      </aside>
+    </div>
+
+    <div class="mt-6 grid grid-cols-1 md:grid-cols-2 gap-4">
+        <div class="detail-panel glass p-4 sm:p-5 rd-22">
+          <div class="detail-panel-label">Driver</div>
+          <div class="title detail-panel-title font-bold mt-2">{{ item.driver_name }}</div>
+          <a
+            href="{{ item.driver_mobile_tel_href }}"
+            class="mt-2 inline-flex items-center gap-2 btn btn-ghost btn-xs"
+          >
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+              <path d="M6.2 10.8c1.4 2.6 3.5 4.6 6.1 6l1.9-.8c.5-.2 1-.1 1.4.3l2.1 2.1c.4.4.5 1 .3 1.5-.4 1-1.4 1.7-2.5 1.7-9.4 0-17-7.6-17-17 0-1.1.7-2.1 1.7-2.5.5-.2 1.1-.1 1.5.3l2.1 2.1c.4.4.5.9.3 1.4l-.8 1.9Z" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+            </svg>
+            {{ item.driver_mobile }}
+          </a>
+
+          <div class="mt-3 flex gap-2 flex-wrap">
+            <a href="{{ item.driver_mobile_tel_href }}" class="btn btn-primary btn-sm">
+              Call driver
+            </a>
+            {% if item.driver_mobile_digits and (item.driver_mobile_digits|length) >= 10 %}
+              <a
+                href="https://wa.me/{{ item.driver_mobile_digits }}"
+                target="_blank"
+                rel="noopener noreferrer"
+                class="btn btn-ghost btn-sm"
+              >
+                WhatsApp
+              </a>
+            {% endif %}
+          </div>
+        </div>
+
+        <div class="detail-panel glass p-4 sm:p-5 rd-22">
+          <div class="detail-panel-label">Cargo summary</div>
+          <div class="mt-3 grid grid-cols-1 sm:grid-cols-2 gap-3">
+            <div class="detail-stat">
+              <div class="detail-stat-label">Packages</div>
+              <div class="title detail-stat-number font-bold mt-1">{{ item.package_count }}</div>
+              <div class="detail-stat-sub mt-2">Manifest total: {{ item.weight_display }}</div>
+            </div>
+            <div class="detail-stat">
+              <div class="detail-stat-label">Likely arrival</div>
+              <div class="title detail-stat-eta font-bold mt-1 leading-snug">{{ item.eta_display }}</div>
+              <div class="detail-stat-sub mt-1">{{ item.eta_remaining }}</div>
+            </div>
+          </div>
+        </div>
+    </div>
+
+    <div class="mt-6 detail-panel detail-pixel-panel glass-strong p-4 sm:p-5 rd-24 max-w-4xl">
+      <div class="detail-panel-label">Unit load</div>
+      <div class="mt-2 flex items-end justify-between gap-3 flex-wrap">
+        <div>
+          <div class="title detail-load-weight font-bold">{{ item.weight_display }}</div>
+          <div class="detail-panel-muted mt-1">
+            Capacity used: {{ item.load_percent }}% of {{ item.capacity_weight_display }}
+          </div>
+        </div>
+        <div class="status-chip status-blue">
+          <span class="h-2 w-2 rounded-full bg-sky-400"></span>
+          <span>{{ item.load_percent }}%</span>
+        </div>
+      </div>
+      <div class="detail-load-track mt-4 h-4 glass p-1 rd-22 overflow-hidden max-w-2xl">
+        <div
+          id="loadBarFill"
+          class="h-full rd-22 bg-gradient-to-r from-sky-400/90 to-emerald-400/85 transition-[width] duration-300"
+          style="width: {{ item.load_percent|default(0) }}%"
+        ></div>
+      </div>
+      <div class="mt-2 detail-panel-muted">
+        Estimated using dispatch total weight vs CHT load capability.
+      </div>
+    </div>
+  </div>
+
+  <div class="detail-footnote detail-pixel-footnote mt-2 py-4 px-1">
+    <div class="detail-footnote-label">Shared by depot</div>
+    <p class="mt-2 detail-footnote-body max-w-3xl">
+      This page shows only non-sensitive dispatch fields (no item-level or confidential tracking data).
+    </p>
+  </div>
+</div>
+
+  <!-- Fullscreen road map (Carto Voyager + optional OSRM route) -->
+  <div
+    id="detailMapModal"
+    class="fixed inset-0 z-[60] hidden flex-col bg-black/85 backdrop-blur-sm p-3 sm:p-5"
+    role="dialog"
+    aria-modal="true"
+    aria-label="Full map"
+  >
+    <div class="flex flex-col gap-3 mb-3 shrink-0 sm:flex-row sm:items-center sm:justify-between">
+      <div class="title text-lg font-bold">Route map</div>
+      <div class="flex flex-wrap items-center gap-2 sm:justify-end">
+        <div
+          id="fullscreenBasemapBar"
+          class="map-basemap-bar map-basemap-bar--modal"
+          role="toolbar"
+          aria-label="Full screen map type"
+        >
+          <span class="map-basemap-bar-label sr-only">Map type</span>
+          <div class="map-basemap-group">
+            <button type="button" class="map-basemap-btn" data-basemap="streets" aria-pressed="true">Street</button>
+            <button type="button" class="map-basemap-btn" data-basemap="terrain" aria-pressed="false">Terrain</button>
+            <button type="button" class="map-basemap-btn" data-basemap="satellite" aria-pressed="false">Satellite</button>
+            <button type="button" class="map-basemap-btn" data-basemap="road" aria-pressed="false">Road</button>
+          </div>
+        </div>
+        <button type="button" id="detailMapModalClose" class="btn btn-ghost btn-sm">Close</button>
+      </div>
+    </div>
+    <div class="flex-1 min-h-[50vh] w-full rd-22 border border-white/15 overflow-hidden relative">
+      <!-- Always-visible fallback background -->
+      <div
+        id="detailMapFallbackBg"
+        class="absolute inset-0 z-0"
+        style="background-image: url('https://upload.wikimedia.org/wikipedia/commons/thumb/7/7b/India_states_and_union_territories.svg/800px-India_states_and_union_territories.svg.png'); background-size: contain; background-position: center; background-repeat: no-repeat; opacity: 0.95;"
+        aria-hidden="true"
+      ></div>
+      <div id="detailMapFullscreen" class="absolute inset-0 z-[2]"></div>
+    </div>
+    <div class="muted2 text-sm mt-2 shrink-0">
+      <strong>Street</strong> = OpenStreetMap · <strong>Terrain</strong> = Esri World Topo · <strong>Satellite</strong> = Esri imagery · <strong>Road</strong> = CARTO Voyager.
+    </div>
+  </div>
+
+  <!-- QR popup modal -->
+  <div
+    id="qrModalBackdrop"
+    class="fixed inset-0 z-50 hidden items-center justify-center p-4"
+    role="dialog"
+    aria-modal="true"
+  >
+    <div class="absolute inset-0 bg-black/60 backdrop-blur"></div>
+    <div class="relative glass-strong p-5 sm:p-6 rd-26 w-full qr-modal-panel card-hover" onclick="event.stopPropagation()">
+      <div class="flex items-center justify-between gap-3 mb-2">
+        <div>
+          <div class="title text-lg font-bold">Dispatch QR</div>
+          <div id="qrModalVehicleLine" class="muted2 text-sm mt-0.5 hidden"></div>
+        </div>
+        <button id="qrModalClose" type="button" class="btn btn-ghost btn-sm">Close</button>
+      </div>
+      <img
+        id="qrModalImg"
+        alt="Dispatch QR"
+        class="qr-modal-img mx-auto block rounded-2xl bg-white p-3 shadow-lg"
+        width="400"
+        height="400"
+      />
+      <div class="flex flex-wrap gap-2 justify-center mt-4">
+        <button type="button" id="qrModalCopyLinkBtn" class="btn btn-primary btn-sm">Copy public link</button>
+        <button type="button" id="qrModalPrintBtn" class="btn btn-ghost btn-sm">Print QR</button>
+      </div>
+      <div class="muted2 text-sm mt-3 text-center">Use this QR or link to re-share the dispatch details.</div>
+    </div>
+  </div>
+
+  <script>
+    (function () {
+      const openBtn = document.getElementById("openQrBtn");
+      const printBtn = document.getElementById("printQrBtn");
+      const backdrop = document.getElementById("qrModalBackdrop");
+      const img = document.getElementById("qrModalImg");
+      const closeBtn = document.getElementById("qrModalClose");
+      const qrModalPrintBtn = document.getElementById("qrModalPrintBtn");
+      const qrModalCopyLinkBtn = document.getElementById("qrModalCopyLinkBtn");
+      const qrModalVehicleLine = document.getElementById("qrModalVehicleLine");
+
+      function showDetailToast(message) {
+        const toastEl = document.getElementById("toast");
+        const toastText = document.getElementById("toastText");
+        if (!toastEl || !toastText) return;
+        toastText.textContent = message;
+        toastEl.classList.remove("hidden");
+        toastEl.classList.add("flex");
+        window.setTimeout(() => {
+          toastEl.classList.add("hidden");
+          toastEl.classList.remove("flex");
+        }, 2200);
+      }
+
+      function escPrint(s) {
+        return String(s || "")
+          .replace(/&/g, "&amp;")
+          .replace(/</g, "&lt;")
+          .replace(/"/g, "&quot;")
+          .replace(/'/g, "&#39;");
+      }
+
+      function vehicleForPrint() {
+        const root = document.getElementById("detailRoot");
+        return (
+          (printBtn && printBtn.getAttribute("data-vehicle")) ||
+          (root && root.getAttribute("data-vehicle")) ||
+          ""
+        );
+      }
+
+      function printDispatchQr(rawUrl) {
+        let u = rawUrl || "";
+        if (!u) return;
+        if (!/^https?:/i.test(u)) u = window.location.origin + (u.startsWith("/") ? u : "/" + u);
+        const w = window.open("", "_blank");
+        if (!w) return;
+        const vehicle = vehicleForPrint();
+        const src = escPrint(u);
+        const title = vehicle ? "QR — " + vehicle : "Print QR";
+        const sub = vehicle
+          ? "<p style='margin:0 0 18px;font-size:1.2rem;font-weight:800;color:#0f172a;letter-spacing:-0.02em'>" +
+            escPrint(vehicle) +
+            "</p>"
+          : "";
+        w.document.write(
+          '<!DOCTYPE html><html><head><meta charset="utf-8"><title>' +
+            escPrint(title) +
+            '</title></head><body style="margin:0;padding:28px;text-align:center;font-family:Plus Jakarta Sans,system-ui,sans-serif;color:#0f172a"><h1 style="font-size:0.75rem;font-weight:800;margin:0 0 8px;letter-spacing:.1em;text-transform:uppercase;color:#64748b">CHT dispatch identifier</h1>' +
+            sub +
+            '<img src="' +
+            src +
+            '" alt="" width="400" height="400" style="width:400px;height:400px;max-width:95vw;max-height:95vw;object-fit:contain" /><p style="font-size:12px;color:#64748b;margin-top:16px">Scan to open the public dispatch page.</p><script>window.onload=function(){window.print();}<\/script></body></html>'
+        );
+        w.document.close();
+      }
+
+      if (printBtn) {
+        printBtn.addEventListener("click", (e) => {
+          e.stopPropagation();
+          printDispatchQr(printBtn.getAttribute("data-qr"));
+        });
+      }
+
+      if (qrModalPrintBtn) {
+        qrModalPrintBtn.addEventListener("click", (e) => {
+          e.stopPropagation();
+          printDispatchQr(img && img.src ? img.src : openBtn && openBtn.getAttribute("data-qr"));
+        });
+      }
+
+      if (qrModalCopyLinkBtn) {
+        qrModalCopyLinkBtn.addEventListener("click", async (e) => {
+          e.stopPropagation();
+          try {
+            await navigator.clipboard.writeText(window.location.href.split("#")[0]);
+            showDetailToast("Public link copied.");
+          } catch (_) {
+            showDetailToast("Copy failed — use the address bar.");
+          }
+        });
+      }
+
+      if (!openBtn || !backdrop || !img) return;
+
+      function createBasemapLayer(key) {
+        switch (key) {
+          case "terrain":
+            return L.tileLayer(
+              "https://server.arcgisonline.com/ArcGIS/rest/services/World_Topo_Map/MapServer/tile/{z}/{y}/{x}",
+              {
+                maxZoom: 19,
+                attribution:
+                  'Tiles &copy; <a href="https://www.esri.com/">Esri</a> — <a href="https://www.openstreetmap.org/copyright">OSM</a>',
+              }
+            );
+          case "satellite":
+            return L.tileLayer(
+              "https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}",
+              {
+                maxZoom: 19,
+                attribution: 'Tiles &copy; <a href="https://www.esri.com/">Esri</a>',
+              }
+            );
+          case "road":
+            return L.tileLayer(
+              "https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png",
+              {
+                maxZoom: 20,
+                subdomains: "abcd",
+                attribution:
+                  '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> &copy; <a href="https://carto.com/">CARTO</a>',
+              }
+            );
+          case "streets":
+          default:
+            return L.tileLayer("https://tile.openstreetmap.org/{z}/{x}/{y}.png", {
+              maxZoom: 19,
+              attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>',
+            });
+        }
+      }
+
+      /** Attach basemap layer switcher; returns API with setBasemap(key). */
+      function attachBasemapToMap(map, toolbarEl, initialKey) {
+        const keys = ["streets", "terrain", "satellite", "road"];
+        const layers = {};
+        keys.forEach((k) => {
+          layers[k] = createBasemapLayer(k);
+        });
+        let activeKey = null;
+
+        function setBasemap(key) {
+          if (!map || !layers[key] || key === activeKey) return;
+          if (activeKey && layers[activeKey]) {
+            try {
+              map.removeLayer(layers[activeKey]);
+            } catch (_) {
+              /* ignore */
+            }
+          }
+          activeKey = key;
+          layers[key].addTo(map);
+          if (toolbarEl) {
+            toolbarEl.querySelectorAll(".map-basemap-btn").forEach((btn) => {
+              const on = btn.getAttribute("data-basemap") === key;
+              btn.classList.toggle("is-active", on);
+              btn.setAttribute("aria-pressed", on ? "true" : "false");
+            });
+          }
+        }
+
+        if (toolbarEl) {
+          if (!toolbarEl.dataset.basemapDelegate) {
+            toolbarEl.dataset.basemapDelegate = "1";
+            toolbarEl.addEventListener("click", (e) => {
+              const btn = e.target.closest(".map-basemap-btn");
+              if (!btn || !toolbarEl.contains(btn)) return;
+              e.stopPropagation();
+              const cb = toolbarEl._basemapSet;
+              if (typeof cb === "function") cb(btn.getAttribute("data-basemap") || "streets");
+            });
+          }
+          toolbarEl._basemapSet = setBasemap;
+        }
+
+        setBasemap(initialKey || "streets");
+        return { setBasemap };
+      }
+
+      const depotLat = {{ depot_lat }};
+      const depotLng = {{ depot_lng }};
+
+      // Initialize the real location map (Leaflet).
+      const locationMap = document.getElementById("locationMap");
+      let inlineMap = null;
+      if (locationMap) {
+        const lat = parseFloat(locationMap.getAttribute("data-lat") || "");
+        const lng = parseFloat(locationMap.getAttribute("data-lng") || "");
+        const hasCoords = Number.isFinite(lat) && Number.isFinite(lng);
+
+        // Always render schematic overlay when we have coords (fallback when tiles fail).
+        if (hasCoords) {
+          const schematicOverlay = document.getElementById("schematicOverlay");
+          const lineEl = document.getElementById("schematicLine");
+          const depotDot = document.getElementById("schematicDepotDot");
+          const destDot = document.getElementById("schematicDestDot");
+          if (schematicOverlay && lineEl && depotDot && destDot) {
+            const latMin = 8.0, latMax = 30.5, lngMin = 66.0, lngMax = 94.0, w = 360, h = 220;
+            const depotX = ((depotLng - lngMin) / (lngMax - lngMin)) * w;
+            const depotY = ((latMax - depotLat) / (latMax - latMin)) * h;
+            const destX = ((lng - lngMin) / (lngMax - lngMin)) * w;
+            const destY = ((latMax - lat) / (latMax - latMin)) * h;
+            const clamp = (v, min, max) => Math.max(min, Math.min(max, v));
+            depotDot.setAttribute("cx", clamp(depotX, 0, w));
+            depotDot.setAttribute("cy", clamp(depotY, 0, h));
+            destDot.setAttribute("cx", clamp(destX, 0, w));
+            destDot.setAttribute("cy", clamp(destY, 0, h));
+            lineEl.setAttribute("d", `M ${clamp(depotX, 0, w)} ${clamp(depotY, 0, h)} L ${clamp(destX, 0, w)} ${clamp(destY, 0, h)}`);
+          }
+        }
+
+        if (hasCoords && typeof L !== "undefined") {
+          try {
+          inlineMap = L.map("locationMap", {
+            zoomControl: true,
+            attributionControl: true,
+            scrollWheelZoom: false,
+          }).setView([lat, lng], 5);
+
+          const inlineBar = document.getElementById("inlineBasemapBar");
+          if (inlineBar) {
+            attachBasemapToMap(inlineMap, inlineBar, "streets");
+            inlineBar.classList.remove("hidden");
+          } else {
+            createBasemapLayer("streets").addTo(inlineMap);
+          }
+
+          L.circleMarker([depotLat, depotLng], {
+            radius: 8,
+            color: "#f59e0b",
+            weight: 3,
+            fillColor: "#f59e0b",
+            fillOpacity: 0.95,
+          })
+            .addTo(inlineMap)
+            .bindPopup("Depot ({{ depot_name | e }}) — Our location");
+
+          // Preview connector: depot -> receiving station
+          L.polyline(
+            [
+              [depotLat, depotLng],
+              [lat, lng],
+            ],
+            { color: "#38bdf8", weight: 4, opacity: 0.9 }
+          ).addTo(inlineMap);
+          const locFb = document.getElementById("locationFallbackLine");
+          if (locFb) locFb.style.display = "none";
+
+          L.circleMarker([lat, lng], {
+            radius: 7,
+            color: "#34d399",
+            weight: 3,
+            fillColor: "#34d399",
+            fillOpacity: 0.9,
+          })
+            .addTo(inlineMap)
+            .bindPopup(
+              "Station/Location: " +
+                (locationMap.getAttribute("data-name") || "") +
+                "<br/>GPS: " +
+                lat.toFixed(3) +
+                ", " +
+                lng.toFixed(3)
+            );
+
+          const bounds = L.latLngBounds([
+            [depotLat, depotLng],
+            [lat, lng],
+          ]);
+          inlineMap.fitBounds(bounds, { padding: [18, 18], maxZoom: 10 });
+          setTimeout(() => inlineMap.invalidateSize(), 0);
+
+          inlineMap.on("click", () => { if (typeof openDetailFullscreen === "function") openDetailFullscreen(); });
+          } catch (err) {
+            console.warn("Leaflet map init failed, using static fallback:", err);
+          }
+        }
+
+        // Fullscreen map (works with or without Leaflet)
+        if (hasCoords) {
+          const modal = document.getElementById("detailMapModal");
+          const modalPane = document.getElementById("detailMapFullscreen");
+          const modalClose = document.getElementById("detailMapModalClose");
+          const expandBtn = document.getElementById("detailMapExpandBtn");
+
+          // Keep a single Leaflet instance so "Full map" works repeatedly.
+          let fullscreenMap = null;
+
+          function openDetailFullscreen() {
+            if (!modal || !modalPane || !Number.isFinite(lat) || !Number.isFinite(lng)) return;
+            modal.classList.remove("hidden");
+            modal.classList.add("flex");
+            if (fullscreenMap) {
+              try {
+                fullscreenMap.remove();
+              } catch (_) {
+                // ignore
+              }
+              fullscreenMap = null;
+            }
+            const fbLinePre = document.getElementById("detailMapFallbackLine");
+            if (fbLinePre) fbLinePre.style.display = "";
+            modalPane.innerHTML = "";
+            // Always show static background under Leaflet tiles (helps when tiles are slow/blocked).
+            modalPane.style.backgroundImage = "url('https://upload.wikimedia.org/wikipedia/commons/thumb/7/7b/India_states_and_union_territories.svg/800px-India_states_and_union_territories.svg.png')";
+            modalPane.style.backgroundSize = "contain";
+            modalPane.style.backgroundPosition = "center";
+            modalPane.style.backgroundRepeat = "no-repeat";
+            modalPane.style.backgroundColor = "rgba(15,23,42,0.95)";
+            modalPane.style.minHeight = "300px";
+
+            if (typeof L !== "undefined") {
+              try {
+                fullscreenMap = L.map("detailMapFullscreen", { zoomControl: true, attributionControl: true, scrollWheelZoom: true });
+                const fsBar = document.getElementById("fullscreenBasemapBar");
+                attachBasemapToMap(fullscreenMap, fsBar, "streets");
+                L.circleMarker([depotLat, depotLng], { radius: 10, color: "#f59e0b", weight: 3, fillColor: "#f59e0b", fillOpacity: 0.95 }).addTo(fullscreenMap).bindPopup("Depot ({{ depot_name | e }})");
+                L.circleMarker([lat, lng], { radius: 9, color: "#34d399", weight: 3, fillColor: "#34d399", fillOpacity: 0.9 }).addTo(fullscreenMap).bindPopup(locationMap.getAttribute("data-name") || "");
+                // Hide only the fallback line once Leaflet draws.
+                const fbLine = document.getElementById("detailMapFallbackLine");
+                if (fbLine) fbLine.style.display = "none";
+
+                fullscreenMap.fitBounds(L.latLngBounds([[depotLat, depotLng], [lat, lng]]), { padding: [48, 48], maxZoom: 12 });
+
+                // Leaflet often needs a couple renders after the modal becomes visible.
+                // Call invalidateSize even if tiles are blocked (whenReady may never fire).
+                setTimeout(() => fullscreenMap.invalidateSize(), 80);
+                setTimeout(() => fullscreenMap.invalidateSize(), 260);
+                setTimeout(() => fullscreenMap.invalidateSize(), 520);
+                fullscreenMap.whenReady(() => {
+                  setTimeout(() => fullscreenMap.invalidateSize(), 420);
+                });
+              } catch (err) {
+                console.warn("Fullscreen Leaflet init failed, using static fallback:", err);
+              }
+            } else {
+              // Leave static background as-is.
+            }
+          }
+
+          function closeDetailFullscreen() {
+            if (!modal) return;
+            modal.classList.add("hidden");
+            modal.classList.remove("flex");
+            if (fullscreenMap) {
+              try {
+                fullscreenMap.remove();
+              } catch (_) {
+                // ignore
+              }
+              fullscreenMap = null;
+            }
+            if (modalPane) modalPane.innerHTML = "";
+            if (inlineMap) setTimeout(() => inlineMap.invalidateSize(), 0);
+            const fbLine = document.getElementById("detailMapFallbackLine");
+            if (fbLine) fbLine.style.display = "";
+            const locFb = document.getElementById("locationFallbackLine");
+            if (locFb) locFb.style.display = "";
+            // fallback background stays visible behind Leaflet (z-index), so no need to toggle.
+          }
+
+          if (expandBtn) expandBtn.addEventListener("click", (e) => { e.stopPropagation(); openDetailFullscreen(); });
+          if (modalClose) modalClose.addEventListener("click", closeDetailFullscreen);
+          if (modal) modal.addEventListener("click", (e) => { if (e.target === modal) closeDetailFullscreen(); });
+          document.getElementById("locationMapWrap")?.addEventListener("click", (e) => { if (!e.target.closest("#detailMapExpandBtn")) openDetailFullscreen(); });
+        }
+      }
+
+      function openQrModal() {
+        const qrUrl = openBtn.getAttribute("data-qr");
+        img.src = qrUrl;
+        const root = document.getElementById("detailRoot");
+        const v = root && root.getAttribute("data-vehicle");
+        if (qrModalVehicleLine) {
+          if (v) {
+            qrModalVehicleLine.textContent = v;
+            qrModalVehicleLine.classList.remove("hidden");
+          } else {
+            qrModalVehicleLine.textContent = "";
+            qrModalVehicleLine.classList.add("hidden");
+          }
+        }
+        backdrop.classList.remove("hidden");
+        backdrop.classList.add("flex");
+      }
+
+      function closeQrModal() {
+        backdrop.classList.add("hidden");
+        backdrop.classList.remove("flex");
+        img.src = "";
+        if (qrModalVehicleLine) {
+          qrModalVehicleLine.textContent = "";
+          qrModalVehicleLine.classList.add("hidden");
+        }
+      }
+
+      // Open QR when user taps/clicks anywhere on the dispatch details,
+      // but do not interfere with interactive elements (call/WhatsApp/links/buttons).
+      const detailRoot = document.getElementById("detailRoot");
+      if (detailRoot) {
+        detailRoot.addEventListener("click", (e) => {
+          const interactive = e.target.closest("a,button,input,textarea,select");
+          if (interactive) return;
+          if (e.target.closest(".detail-qr-tile")) return;
+          if (e.target.closest("#locationMapWrap") || e.target.closest("#detailMapModal")) return;
+          openQrModal();
+        });
+      }
+
+      openBtn.addEventListener("click", openQrModal);
+      if (closeBtn) closeBtn.addEventListener("click", closeQrModal);
+
+      backdrop.addEventListener("click", (e) => {
+        if (e.target === backdrop) closeQrModal();
+      });
+    })();
+  </script>
+{% endblock %}
+

@@ -1,0 +1,25 @@
+services:
+  - type: web
+    name: qr-dispatch-platform
+    runtime: python
+    plan: starter
+    buildCommand: pip install -r requirements.txt
+    startCommand: gunicorn app:app -k uvicorn.workers.UvicornWorker --workers 2 --bind 0.0.0.0:$PORT
+    healthCheckPath: /healthz
+    envVars:
+      - key: PYTHON_VERSION
+        value: 3.11.10
+      - key: PUBLIC_BASE_URL
+        sync: false
+      - key: SESSION_SECRET
+        generateValue: true
+      - key: ADMIN_USERNAME
+        value: cht_mgt
+      - key: ADMIN_PASSWORD
+        sync: false
+      - key: DISPATCH_DB_PATH
+        value: /var/data/dispatch.db
+    disk:
+      name: qr-dispatch-data
+      mountPath: /var/data
+      sizeGB: 1

@@ -1,0 +1,158 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <script>
+      try {
+        if (localStorage.getItem("cht-theme") === "light") {
+          document.documentElement.classList.add("theme-light");
+        }
+      } catch (e) {}
+    </script>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:ital,wght@0,400;0,500;0,600;0,700;0,800;1,500&display=swap"
+      rel="stylesheet"
+    />
+
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+      tailwind.config = {
+        darkMode: "class",
+        theme: {
+          extend: {},
+        },
+      };
+    </script>
+
+    <!-- Leaflet (used for the public location map) -->
+    <link
+      rel="stylesheet"
+      href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"
+    />
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+
+    <link rel="stylesheet" href="/static/styles.css" />
+
+    {% block extra_head %}{% endblock %}
+    <title>{% block title %}Dispatch QR Platform{% endblock %}</title>
+  </head>
+
+  <body>
+    <div class="page-bg">
+      <div class="content app-shell mx-auto">
+        <header class="app-brand-hero" role="banner">
+          <div class="app-brand-hero-inner">
+            <div class="app-brand-hero-text">
+              <h1 class="app-brand-title">
+                <span class="app-brand-title-line">CHT MGT SYS</span>
+              </h1>
+            </div>
+            <button
+              type="button"
+              id="themeToggle"
+              class="theme-toggle-btn"
+              aria-label="Switch to light theme"
+              aria-pressed="false"
+              title="Light / dark theme"
+            >
+              <span class="theme-toggle-icon theme-toggle-icon--sun" aria-hidden="true">
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                  <circle cx="12" cy="12" r="4" stroke="currentColor" stroke-width="2" />
+                  <path d="M12 2v2M12 20v2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M2 12h2M20 12h2M4.93 19.07l1.41-1.41M17.66 6.34l1.41-1.41" stroke="currentColor" stroke-width="2" stroke-linecap="round" />
+                </svg>
+              </span>
+              <span class="theme-toggle-icon theme-toggle-icon--moon hidden" aria-hidden="true">
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                  <path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" />
+                </svg>
+              </span>
+            </button>
+          </div>
+        </header>
+        {% block header %}{% endblock %}
+        {% block content %}{% endblock %}
+      </div>
+
+      <div
+        id="toast"
+        class="app-toast pointer-events-none fixed left-1/2 top-4 z-50 hidden -translate-x-1/2 items-center gap-3 px-5 py-3.5 text-white shadow-xl"
+        role="status"
+        aria-live="polite"
+      >
+        <span class="h-2 w-2 rounded-full bg-emerald-400"></span>
+        <span id="toastText" class="muted"></span>
+      </div>
+    </div>
+
+    <script>
+      (function () {
+        const KEY = "cht-theme";
+        const root = document.documentElement;
+        const btn = document.getElementById("themeToggle");
+        const sun = document.querySelector(".theme-toggle-icon--sun");
+        const moon = document.querySelector(".theme-toggle-icon--moon");
+        function isLight() {
+          return root.classList.contains("theme-light");
+        }
+        function syncThemeUi() {
+          const light = isLight();
+          if (sun) sun.classList.toggle("hidden", light);
+          if (moon) moon.classList.toggle("hidden", !light);
+          if (btn) {
+            btn.setAttribute("aria-pressed", light ? "true" : "false");
+            btn.setAttribute(
+              "aria-label",
+              light ? "Switch to dark theme" : "Switch to light theme"
+            );
+          }
+        }
+        if (btn) {
+          btn.addEventListener("click", function () {
+            if (isLight()) {
+              root.classList.remove("theme-light");
+              try {
+                localStorage.setItem(KEY, "dark");
+              } catch (e) {}
+            } else {
+              root.classList.add("theme-light");
+              try {
+                localStorage.setItem(KEY, "light");
+              } catch (e) {}
+            }
+            syncThemeUi();
+          });
+        }
+        syncThemeUi();
+      })();
+    </script>
+    <script>
+      (function () {
+        const toast = new URLSearchParams(window.location.search).get("toast");
+        if (!toast) return;
+
+        const toastEl = document.getElementById("toast");
+        const toastText = document.getElementById("toastText");
+        if (!toastEl || !toastText) return;
+
+        const map = {
+          created: "Dispatch created.",
+          updated: "Dispatch updated.",
+          deleted: "Dispatch deleted.",
+        };
+
+        toastText.textContent = map[toast] || "Done.";
+        toastEl.classList.remove("hidden");
+        toastEl.classList.add("flex");
+
+        window.setTimeout(() => {
+          toastEl.classList.add("hidden");
+          toastEl.classList.remove("flex");
+        }, 2600);
+      })();
+    </script>
+  </body>
+</html>
+

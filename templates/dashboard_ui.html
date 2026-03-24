@@ -1,0 +1,987 @@
+{% extends "base.html" %}
+
+{% block title %}Depot Dashboard — Dispatch QR{% endblock %}
+
+{% block extra_head %}{% endblock %}
+
+{% block header %}
+<div class="dashboard-head-panel glass-strong p-4 sm:p-5 sm:p-6 mb-6 rd-26 reveal">
+  <div class="dashboard-page-head flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
+    <div>
+      <div class="dashboard-page-title title">Depot control</div>
+      <div class="dashboard-page-lede muted mt-2">Monitor CHT movement, filters, and fleet map in one view.</div>
+    </div>
+    <a href="/admin/new" class="btn btn-primary">
+      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+        <path d="M12 5v14M5 12h14" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
+      </svg>
+      New dispatch
+    </a>
+  </div>
+</div>
+{% endblock %}
+
+{% block content %}
+  <div class="dashboard-shell w-full">
+    <div class="glass-strong p-4 sm:p-5 mb-6 reveal">
+      <div class="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-4">
+        <div class="flex flex-wrap items-center gap-2">
+          <a href="/" class="btn btn-ghost btn-sm">Dashboard</a>
+          <a href="/admin/new" class="btn btn-primary btn-sm">New dispatch</a>
+        </div>
+        <div class="muted text-sm">
+          Live count: <span class="text-white font-semibold">{{ stats.all }}</span> active records
+        </div>
+      </div>
+    </div>
+
+    <main class="w-full">
+      <div class="stat-tiles-grid grid grid-cols-2 lg:grid-cols-4 gap-4 mb-6 reveal">
+        <div class="stat-tile stat-tile--sky card-hover">
+          <div class="stat-tile-icon">
+            <svg fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2"/></svg>
+          </div>
+          <div class="stat-tile-body">
+            <div class="stat-tile-label">All dispatches</div>
+            <div class="stat-tile-value">{{ stats.all }}</div>
+          </div>
+        </div>
+        <div class="stat-tile stat-tile--emerald card-hover">
+          <div class="stat-tile-icon">
+            <svg fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 7h8m0 0v8m0-8l-8 8-4-4-6 6"/></svg>
+          </div>
+          <div class="stat-tile-body">
+            <div class="stat-tile-label">On Route</div>
+            <div class="stat-tile-value stat-tile-value--emerald">{{ stats.on_route }}</div>
+          </div>
+        </div>
+        <div class="stat-tile stat-tile--amber card-hover">
+          <div class="stat-tile-icon">
+            <svg fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
+          </div>
+          <div class="stat-tile-body">
+            <div class="stat-tile-label">Delayed</div>
+            <div class="stat-tile-value stat-tile-value--amber">{{ stats.delayed }}</div>
+          </div>
+        </div>
+        <div class="stat-tile stat-tile--violet card-hover">
+          <div class="stat-tile-icon">
+            <svg fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
+          </div>
+          <div class="stat-tile-body">
+            <div class="stat-tile-label">Delivered</div>
+            <div class="stat-tile-value stat-tile-value--violet">{{ stats.delivered }}</div>
+          </div>
+        </div>
+      </div>
+
+  <div class="filter-panel glass-strong p-4 sm:p-6 mb-6 card-hover reveal">
+    <div class="filter-panel-head mb-5">
+      <h2 class="filter-panel-title title">Search &amp; filters</h2>
+      <p class="filter-panel-desc muted2 text-sm mt-1">Narrow results by status, dates, load, location, and vehicle.</p>
+    </div>
+    <form method="get" class="filter-form">
+      <div class="filter-form-grid">
+        <div class="filter-field">
+          <label class="filter-label" for="q">Search</label>
+          <input id="q" class="field filter-field-input" name="q" value="{{ q }}" placeholder="Vehicle, driver, destination..." />
+        </div>
+        <div class="filter-field">
+          <label class="filter-label" for="status">Status</label>
+          <select id="status" class="field filter-field-input" name="status">
+            {% for s in ["All","On Route","Delayed","Delivered"] %}
+              <option value="{{ s }}" {% if (status or "All") == s %}selected{% endif %}>{{ s }}</option>
+            {% endfor %}
+          </select>
+        </div>
+        <div class="filter-field">
+          <label class="filter-label" for="dispatch_date_from">Dispatch date (from)</label>
+          <input id="dispatch_date_from" class="field filter-field-input" type="date" name="dispatch_date_from" value="{{ dispatch_date_from }}" title="Dispatch date from" />
+        </div>
+        <div class="filter-field">
+          <label class="filter-label" for="dispatch_date_to">Dispatch date (to)</label>
+          <input id="dispatch_date_to" class="field filter-field-input" type="date" name="dispatch_date_to" value="{{ dispatch_date_to }}" title="Dispatch date to" />
+        </div>
+        <div class="filter-field">
+          <label class="filter-label" for="distance_range">Distance range</label>
+          <select id="distance_range" class="field filter-field-input" name="distance_range" title="Distance range from depot">
+            {% for dr in ["All","0-50","50-150","150+"] %}
+              <option value="{{ dr }}" {% if (distance_range or "All") == dr %}selected{% endif %}>{{ dr }}</option>
+            {% endfor %}
+          </select>
+        </div>
+        <div class="filter-field">
+          <label class="filter-label" for="destination">Location (district/city)</label>
+          <input id="destination" class="field filter-field-input" name="destination" value="{{ destination }}" placeholder="e.g. Jaisalmer" />
+        </div>
+        <div class="filter-field">
+          <label class="filter-label" for="weight_min">Weight (kg) min</label>
+          <input id="weight_min" class="field filter-field-input" type="number" step="0.1" name="weight_min" value="{{ weight_min }}" placeholder="e.g. 100" />
+        </div>
+        <div class="filter-field">
+          <label class="filter-label" for="weight_max">Weight (kg) max</label>
+          <input id="weight_max" class="field filter-field-input" type="number" step="0.1" name="weight_max" value="{{ weight_max }}" placeholder="e.g. 1500" />
+        </div>
+        <div class="filter-field">
+          <label class="filter-label" for="sort">Sort CHTs by</label>
+          <select id="sort" class="field filter-field-input" name="sort" title="Sort order">
+            {% for opt in [
+              ("dispatch_desc", "Dispatch date (newest first)"),
+              ("dispatch_asc", "Dispatch date (oldest first)"),
+              ("eta_asc", "Likely arrival (soonest first)"),
+              ("eta_desc", "Likely arrival (latest first)"),
+              ("status", "Status (Delayed → On Route → Delivered)"),
+              ("vehicle_asc", "Vehicle number (A–Z)"),
+              ("weight_desc", "Total weight (high → low)"),
+              ("weight_asc", "Total weight (low → high)"),
+              ("updated_desc", "Last updated (newest first)"),
+            ] %}
+              <option value="{{ opt[0] }}" {% if (sort or 'dispatch_desc') == opt[0] %}selected{% endif %}>{{ opt[1] }}</option>
+            {% endfor %}
+          </select>
+        </div>
+        <div class="filter-field filter-field--vehicle">
+          <label class="filter-label" for="vehicle_number">Vehicle number</label>
+          <input id="vehicle_number" class="field filter-field-input" name="vehicle_number" value="{{ vehicle_number }}" placeholder="e.g. RJ 14 KC 9021" />
+        </div>
+        <div class="filter-actions">
+          <button class="btn btn-primary" type="submit">Apply filters</button>
+          <a class="btn btn-ghost" href="/">Reset</a>
+          <a
+            class="btn btn-ghost"
+            id="exportCsvBtn"
+            href="/export/dispatches.csv{% if request.url.query %}?{{ request.url.query }}{% endif %}"
+            title="Download current result set (same filters as this page)"
+          >Export CSV</a>
+        </div>
+      </div>
+    </form>
+  </div>
+
+  {% if dispatches and dispatches|length > 0 %}
+    <!-- Full-width map: same content width as filter panel above -->
+    <section class="dashboard-map-section w-full mb-6 reveal" aria-labelledby="dashboard-map-heading">
+      <div class="glass-strong p-4 sm:p-6 rd-26 card-hover map-panel map-panel--fullwidth">
+        <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 mb-3">
+          <div>
+            <div class="muted text-sm">Fleet overview</div>
+            <h2 id="dashboard-map-heading" class="title text-lg sm:text-xl font-bold mt-1">Depot → Stations</h2>
+          </div>
+          <div class="flex flex-wrap items-center gap-x-4 gap-y-1 muted2 text-xs sm:text-sm">
+            <span class="flex items-center gap-1.5"><span class="w-2.5 h-2.5 shrink-0 rounded-full bg-amber-400" aria-hidden="true"></span> Depot</span>
+            <span class="flex items-center gap-1.5"><span class="w-2.5 h-2.5 shrink-0 rounded-full bg-emerald-400" aria-hidden="true"></span> Stations</span>
+          </div>
+        </div>
+        <div
+          id="dashboardBasemapBar"
+          class="map-basemap-bar mt-3"
+          role="toolbar"
+          aria-label="Fleet map type"
+        >
+          <span class="map-basemap-bar-label">Map type</span>
+          <div class="map-basemap-group">
+            <button type="button" class="map-basemap-btn" data-basemap="streets" aria-pressed="true">Street</button>
+            <button type="button" class="map-basemap-btn" data-basemap="terrain" aria-pressed="false">Terrain</button>
+            <button type="button" class="map-basemap-btn" data-basemap="satellite" aria-pressed="false">Satellite</button>
+            <button type="button" class="map-basemap-btn" data-basemap="road" aria-pressed="false">Road</button>
+          </div>
+        </div>
+        <div class="dashboard-map-canvas fleet-map-embed mt-3 w-full rd-22 overflow-hidden border border-white/10 relative bg-slate-900/80">
+          <button
+            type="button"
+            id="fleetMapExpandBtn"
+            class="absolute top-3 right-3 z-[1000] btn btn-primary btn-sm"
+          >
+            Full map
+          </button>
+          <div
+            class="absolute inset-0 z-0"
+            style="background: url('https://upload.wikimedia.org/wikipedia/commons/thumb/7/7b/India_states_and_union_territories.svg/800px-India_states_and_union_territories.svg.png') center/contain no-repeat; opacity: 0.85;"
+            aria-hidden="true"
+          ></div>
+          <div id="dashboardMap" class="absolute inset-0 z-[2] min-h-0 cursor-pointer" title="Click map for full screen"></div>
+        </div>
+        <script type="application/json" id="dashboardMapData">
+          {
+            "depotLat": {{ depot_lat|default(26.32535) }},
+            "depotLng": {{ depot_lng|default(73.2401) }},
+            "depotName": "{{ depot_name | e }}",
+            "markers": [
+              {% set ns = namespace(first=true) %}
+              {% for d in dispatches %}
+                {% if d.station_lat is not none and d.station_lng is not none %}
+                  {% if not ns.first %},{% endif %}
+                  {% set ns.first = false %}
+                  {
+                    "token": "{{ d.public_token }}",
+                    "lat": {{ d.station_lat }},
+                    "lng": {{ d.station_lng }},
+                    "label": "{{ d.to_display | e }}",
+                    "vehicle": "{{ d.vehicle_number | e }}"
+                  }
+                {% endif %}
+              {% endfor %}
+            ]
+          }
+        </script>
+        <div class="muted2 text-sm mt-3 flex flex-wrap items-center gap-x-4 gap-y-2">
+          <span>Click a marker popup to open the public page.</span>
+          <span>Click the map or <strong>Full map</strong> for a large road map.</span>
+          <a href="https://www.openstreetmap.org/#map=5/20/78" target="_blank" rel="noopener" class="text-sky-300 hover:underline shrink-0">OpenStreetMap ↗</a>
+        </div>
+      </div>
+    </section>
+
+    <!-- CHT cards: up to three columns on wide screens -->
+    <section class="dashboard-cht-section w-full" aria-label="CHT dispatch list">
+      <div class="dispatch-card-grid grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 lg:gap-5 reveal">
+          {% set cht_accents = ['mint', 'iris', 'saffron', 'ocean'] %}
+          {% for d in dispatches %}
+            <div class="glass card-hover p-4 sm:p-5 rd-28 relative cursor-pointer dispatch-row dispatch-row--{{ cht_accents[loop.index0 % 4] }}" data-dispatch-token="{{ d.public_token }}">
+              <a href="/dispatch/{{ d.public_token }}" class="cht-card-link absolute inset-0 z-0" aria-label="Open preview for {{ d.vehicle_number }}"></a>
+              <div class="relative z-10 pointer-events-none">
+              <div class="flex items-start justify-between gap-4">
+                <div class="min-w-0">
+                  <div class="title text-xl sm:text-2xl font-bold tracking-tight truncate cht-card-vehicle">{{ d.vehicle_number }}</div>
+                  <div class="muted text-sm mt-1 break-words">To: {{ d.to_display }}</div>
+                  <div class="muted2 text-sm mt-1">
+                    Driver: <span class="text-white/80 font-medium">{{ d.driver_name if d.driver_name else '—' }}</span>
+                  </div>
+                  <div class="muted2 text-sm mt-1">
+                    ICN: <span class="text-white/80 font-medium">{{ d.icn_number if d.icn_number else '—' }}</span>
+                  </div>
+                  {% if d.nature_of_items_display %}
+                  <div class="muted2 text-sm mt-1">
+                    Nature of Stores: <span class="text-white/90 font-medium">{{ d.nature_of_items_display }}</span>
+                  </div>
+                  {% endif %}
+                </div>
+                <div class="flex flex-col items-end gap-2 shrink-0">
+                  <div class="status-chip {{ d.status_meta.pill }}">
+                    <span class="h-2 w-2 rounded-full {{ d.status_meta.dot }}"></span>
+                    <span>{{ d.status_meta.label }}</span>
+                  </div>
+                  {% if d.eta_urgency and d.eta_urgency.label %}
+                  <span class="{{ d.eta_urgency.badge_class }}" title="ETA vs today: overdue, within 24h, or within 72h (not delivered)">{{ d.eta_urgency.label }}</span>
+                  {% endif %}
+                </div>
+              </div>
+
+              <div class="cht-card-inner-grid mt-4 grid grid-cols-2 gap-3">
+                <div class="glass p-3 sm:p-4 rounded-2xl">
+                  <div class="muted text-sm">Dispatch</div>
+                  <div class="title text-base font-semibold mt-1">{{ d.dispatch_display }}</div>
+                </div>
+                <div class="glass p-3 sm:p-4 rounded-2xl">
+                  <div class="muted text-sm">Packages</div>
+                  <div class="title text-base font-semibold mt-1">{{ d.package_count }}</div>
+                  <div class="muted2 text-sm mt-1">{{ d.weight_display }}</div>
+                  <div class="muted2 text-sm mt-1">
+                    Load: <span class="text-white/80 font-medium">{{ d.load_percent }}%</span>
+                  </div>
+                  {% if d.distance_display %}
+                    <div class="muted2 text-sm mt-1">Dist: <span class="text-white/80 font-medium">{{ d.distance_display }}</span></div>
+                  {% endif %}
+                </div>
+                <div class="glass p-3 sm:p-4 rounded-2xl col-span-2">
+                  <div class="muted text-sm">Likely arrival</div>
+                  <div class="title text-base font-semibold mt-1 flex items-center gap-2 flex-wrap">
+                    {{ d.eta_display }}
+                    <span class="muted2 text-sm">({{ d.eta_remaining }})</span>
+                  </div>
+                </div>
+              </div>
+
+              <div class="mt-4 flex flex-wrap gap-1.5 sm:gap-2 relative z-20 pointer-events-auto">
+                <a href="/dispatch/{{ d.public_token }}" class="btn btn-ghost btn-sm preview-link" data-token="{{ d.public_token }}">Preview</a>
+                <button
+                  type="button"
+                  class="btn btn-ghost btn-sm viewQrBtn"
+                  data-qr="/qr/{{ d.public_token }}.png"
+                  data-vehicle="{{ d.vehicle_number | e }}"
+                >
+                  QR
+                </button>
+                <a href="/admin/share/{{ d.public_token }}" class="btn btn-primary btn-sm">Share</a>
+                <button type="button" class="btn btn-ghost btn-sm waShareBtn"
+                  data-token="{{ d.public_token }}"
+                  data-vehicle="{{ d.vehicle_number }}"
+                  data-destination="{{ d.to_display }}"
+                  data-pin="{{ d.destination_pincode if d.destination_pincode else '' }}"
+                  data-distance="{{ d.distance_display if d.distance_display else '' }}"
+                  data-driver="{{ d.driver_name }}"
+                  data-driver-mobile="{{ d.driver_mobile }}"
+                  data-packages="{{ d.package_count }}"
+                  data-eta="{{ d.eta_display }}">
+                  WhatsApp
+                </button>
+                <button type="button" class="btn btn-ghost btn-sm emailShareBtn"
+                  data-token="{{ d.public_token }}"
+                  data-vehicle="{{ d.vehicle_number }}"
+                  data-destination="{{ d.to_display }}"
+                  data-pin="{{ d.destination_pincode if d.destination_pincode else '' }}"
+                  data-distance="{{ d.distance_display if d.distance_display else '' }}"
+                  data-driver="{{ d.driver_name }}"
+                  data-driver-mobile="{{ d.driver_mobile }}"
+                  data-packages="{{ d.package_count }}"
+                  data-eta="{{ d.eta_display }}">
+                  Email
+                </button>
+                {% if d.status != "Delivered" %}
+                  <form method="post" action="/admin/status/{{ d.public_token }}" class="inline">
+                    <input type="hidden" name="status" value="Delivered" />
+                    <button type="submit" class="btn btn-primary btn-sm">Mark delivered</button>
+                  </form>
+                {% else %}
+                  <button type="button" class="btn btn-ghost btn-sm" disabled>Delivered</button>
+                {% endif %}
+              </div>
+
+              <div class="mt-4 flex items-center justify-between gap-3 relative z-20 pointer-events-auto">
+                <div class="muted text-sm truncate">
+                  Token: <span class="text-white/80 font-medium">{{ d.public_token }}</span>
+                </div>
+                <button type="button" class="btn btn-ghost btn-sm copyLinkBtn" data-token="{{ d.public_token }}">
+                  Copy link
+                </button>
+              </div>
+              </div>
+            </div>
+          {% endfor %}
+      </div>
+    </section>
+  {% else %}
+    <div class="glass-strong p-8 text-center card-hover reveal">
+      <div class="title text-2xl font-bold">No dispatches found</div>
+      <div class="muted mt-2">Adjust filters or create a new dispatch entry.</div>
+      <div class="mt-6 flex justify-center">
+        <a href="/admin/new" class="btn btn-primary">Create dispatch</a>
+      </div>
+    </div>
+  {% endif %}
+
+  </main>
+  </div>
+
+  <!-- Fleet fullscreen map -->
+  <div
+    id="fleetMapModal"
+    class="fixed inset-0 z-[60] hidden flex-col bg-black/85 backdrop-blur-sm p-3 sm:p-5"
+    role="dialog"
+    aria-modal="true"
+    aria-label="Fleet full map"
+  >
+    <div class="flex flex-col gap-3 mb-3 shrink-0 sm:flex-row sm:items-center sm:justify-between">
+      <div class="title text-lg font-bold">Fleet map</div>
+      <div class="flex flex-wrap items-center gap-2 sm:justify-end">
+        <div
+          id="fleetFsBasemapBar"
+          class="map-basemap-bar map-basemap-bar--modal"
+          role="toolbar"
+          aria-label="Fleet full screen map type"
+        >
+          <span class="map-basemap-bar-label sr-only">Map type</span>
+          <div class="map-basemap-group">
+            <button type="button" class="map-basemap-btn" data-basemap="streets" aria-pressed="true">Street</button>
+            <button type="button" class="map-basemap-btn" data-basemap="terrain" aria-pressed="false">Terrain</button>
+            <button type="button" class="map-basemap-btn" data-basemap="satellite" aria-pressed="false">Satellite</button>
+            <button type="button" class="map-basemap-btn" data-basemap="road" aria-pressed="false">Road</button>
+          </div>
+        </div>
+        <button type="button" id="fleetMapModalClose" class="btn btn-ghost btn-sm">Close</button>
+      </div>
+    </div>
+    <div class="flex-1 min-h-[50vh] w-full rd-22 border border-white/15 overflow-hidden relative bg-slate-900/80 fleet-map-shell">
+      <div
+        class="absolute inset-0 z-0 opacity-30"
+        style="background: url('https://upload.wikimedia.org/wikipedia/commons/thumb/7/7b/India_states_and_union_territories.svg/800px-India_states_and_union_territories.svg.png') center/contain no-repeat;"
+        aria-hidden="true"
+      ></div>
+      <div id="fleetMapFullscreen" class="absolute inset-0 z-[2]"></div>
+      <!-- (Overlay removed: Leaflet polyline/markers show depot->stations) -->
+    </div>
+    <div class="muted2 text-xs mt-2 shrink-0">Street = OSM · Terrain = Esri Topo · Satellite = Esri · Road = CARTO Voyager. Static map shows if tiles are slow.</div>
+  </div>
+
+  <!-- QR modal (must appear before the script that calls getElementById) -->
+  <div
+    id="qrModalBackdrop"
+    class="fixed inset-0 z-50 hidden items-center justify-center p-4"
+    role="dialog"
+    aria-modal="true"
+  >
+    <div class="absolute inset-0 bg-black/60 backdrop-blur"></div>
+    <div class="relative glass-strong p-6 rd-28 w-full qr-modal-panel card-hover flex flex-col gap-4" onclick="event.stopPropagation()">
+      <div class="flex items-center justify-between gap-3 w-full">
+        <div class="title text-lg font-bold">CHT MGT QR</div>
+        <button id="qrModalClose" type="button" class="btn btn-ghost btn-sm">Close</button>
+      </div>
+      <img id="qrModalImg" alt="Dispatch QR" class="qr-modal-img bg-white rounded-2xl p-3 sm:p-4" />
+      <div class="flex flex-wrap gap-2 justify-center">
+        <a id="qrModalDownload" href="#" download="dispatch-qr.png" class="btn btn-primary btn-sm">Download</a>
+        <button type="button" id="qrModalPrint" class="btn btn-ghost btn-sm">Print QR</button>
+      </div>
+      <div class="muted text-sm text-center">Scan to open the public dispatch page.</div>
+    </div>
+  </div>
+
+  <script>
+    (function () {
+      var FILTER_PARAM_KEYS = [
+        "q",
+        "status",
+        "dispatch_date_from",
+        "dispatch_date_to",
+        "distance_range",
+        "destination",
+        "weight_min",
+        "weight_max",
+        "sort",
+        "vehicle_number",
+      ];
+      var form = document.querySelector("form.filter-form");
+      var exportBtn = document.getElementById("exportCsvBtn");
+
+      function captureForm() {
+        var o = {};
+        if (!form) return o;
+        var fd = new FormData(form);
+        FILTER_PARAM_KEYS.forEach(function (k) {
+          var v = fd.get(k);
+          o[k] = v == null ? "" : String(v);
+        });
+        return o;
+      }
+      function buildQuery(data) {
+        var p = new URLSearchParams();
+        FILTER_PARAM_KEYS.forEach(function (k) {
+          var v = data[k];
+          if (v != null && String(v).trim() !== "") p.set(k, String(v));
+        });
+        return p.toString();
+      }
+      function syncExportHref() {
+        if (!exportBtn || !form) return;
+        var qs = buildQuery(captureForm());
+        exportBtn.href = "/export/dispatches.csv" + (qs ? "?" + qs : "");
+      }
+      if (form) {
+        form.addEventListener("input", syncExportHref);
+        form.addEventListener("change", syncExportHref);
+        syncExportHref();
+      }
+    })();
+  </script>
+
+  <script>
+    // --- QR popup modal (for "QR" buttons on dispatch cards) ---
+    const qrModalBackdrop = document.getElementById("qrModalBackdrop");
+    const qrModalImg = document.getElementById("qrModalImg");
+    const qrModalClose = document.getElementById("qrModalClose");
+    const qrModalDownload = document.getElementById("qrModalDownload");
+    const qrModalPrint = document.getElementById("qrModalPrint");
+
+    function openQrModal(qrUrl, vehicleNumber) {
+      if (!qrModalBackdrop || !qrModalImg) return;
+      const fullUrl = qrUrl.startsWith("http") ? qrUrl : window.location.origin + qrUrl;
+      qrModalImg.src = fullUrl;
+      qrModalBackdrop.setAttribute("data-print-vehicle", vehicleNumber || "");
+      if (qrModalDownload) {
+        qrModalDownload.href = fullUrl;
+        const v = (vehicleNumber || "").replace(/[^\w\d]+/g, "-").slice(0, 40);
+        qrModalDownload.download = v ? "qr-" + v + ".png" : "dispatch-qr.png";
+      }
+      qrModalBackdrop.classList.remove("hidden");
+      qrModalBackdrop.classList.add("flex");
+    }
+
+    function escHtml(s) {
+      return String(s || "")
+        .replace(/&/g, "&amp;")
+        .replace(/</g, "&lt;")
+        .replace(/"/g, "&quot;")
+        .replace(/'/g, "&#39;");
+    }
+
+    function printQr() {
+      if (!qrModalImg || !qrModalImg.src) return;
+      const vehicle =
+        (qrModalBackdrop && qrModalBackdrop.getAttribute("data-print-vehicle")) || "";
+      const w = window.open("", "_blank");
+      if (!w) return;
+      const title = vehicle ? "QR — " + vehicle : "Print QR";
+      const sub = vehicle
+        ? "<p style='margin:0 0 20px;font-size:1.25rem;font-weight:800;color:#0f172a;letter-spacing:-0.02em'>" +
+          escHtml(vehicle) +
+          "</p>"
+        : "";
+      w.document.write(
+        "<!DOCTYPE html><html><head><meta charset='utf-8'><title>" +
+          escHtml(title) +
+          "</title></head><body style='margin:0;padding:28px;text-align:center;font-family:Plus Jakarta Sans,system-ui,sans-serif;color:#0f172a'>" +
+          "<h1 style='margin:0 0 8px;font-size:0.75rem;font-weight:800;letter-spacing:0.12em;text-transform:uppercase;color:#64748b'>CHT dispatch identifier</h1>" +
+          sub +
+          "<img src='" +
+          escHtml(qrModalImg.src) +
+          "' alt='QR' style='width:280px;height:280px;object-fit:contain' />" +
+          "<p style='margin-top:16px;font-size:12px;color:#64748b'>Scan to open the public dispatch page.</p>" +
+          "<script>window.onload=function(){window.print();}<\\/script></body></html>"
+      );
+      w.document.close();
+      w.focus();
+      setTimeout(() => {
+        w.print();
+        w.close();
+      }, 280);
+    }
+
+    function closeQrModal() {
+      if (!qrModalBackdrop) return;
+      qrModalBackdrop.classList.add("hidden");
+      qrModalBackdrop.classList.remove("flex");
+      if (qrModalImg) qrModalImg.src = "";
+    }
+
+    document.addEventListener(
+      "click",
+      (e) => {
+        const btn = e.target && e.target.closest && e.target.closest(".viewQrBtn");
+        if (!btn) return;
+        e.preventDefault();
+        e.stopPropagation();
+        const qrUrl = btn.getAttribute("data-qr");
+        const vehicle = btn.getAttribute("data-vehicle") || "";
+        if (qrUrl) openQrModal(qrUrl, vehicle);
+      },
+      true
+    );
+
+
+    // Preview link: explicit navigation (ensures it works)
+    document.querySelectorAll(".preview-link").forEach((a) => {
+      a.addEventListener("click", (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        const token = a.getAttribute("data-token") || (a.getAttribute("href") || "").replace(/.*\/dispatch\//, "").split("/")[0];
+        if (token) window.location.href = "/dispatch/" + token;
+      });
+    });
+
+    if (qrModalClose) qrModalClose.addEventListener("click", closeQrModal);
+    if (qrModalPrint) qrModalPrint.addEventListener("click", printQr);
+    if (qrModalBackdrop) {
+      qrModalBackdrop.addEventListener("click", (e) => {
+        if (!e.target.closest(".glass-strong")) closeQrModal();
+      });
+    }
+
+    function showToast(message) {
+      const toastEl = document.getElementById("toast");
+      const toastText = document.getElementById("toastText");
+      if (!toastEl || !toastText) return;
+      toastText.textContent = message;
+      toastEl.classList.remove("hidden");
+      toastEl.classList.add("flex");
+      window.setTimeout(() => {
+        toastEl.classList.add("hidden");
+        toastEl.classList.remove("flex");
+      }, 2200);
+    }
+
+    function dispatchLink(token) {
+      return window.location.origin + "/dispatch/" + token;
+    }
+
+    document.querySelectorAll(".copyLinkBtn").forEach((btn) => {
+      btn.addEventListener("click", async (e) => {
+        e.stopPropagation();
+        const token = btn.getAttribute("data-token");
+        const link = dispatchLink(token);
+        try {
+          await navigator.clipboard.writeText(link);
+          showToast("Public link copied.");
+        } catch (err) {
+          showToast("Copy failed.");
+        }
+      });
+    });
+
+    function buildShareText(btn) {
+      const link = dispatchLink(btn.getAttribute("data-token"));
+      const pin = btn.getAttribute("data-pin") || "—";
+      const dist = btn.getAttribute("data-distance") || "";
+      return (
+        "Dispatch | Vehicle " +
+        btn.getAttribute("data-vehicle") +
+        " | Station " +
+        btn.getAttribute("data-destination") +
+        " | PIN " +
+        pin +
+        " | Driver " +
+        btn.getAttribute("data-driver") +
+        " (" +
+        btn.getAttribute("data-driver-mobile") +
+        ") | Packages " +
+        btn.getAttribute("data-packages") +
+        " | ETA " +
+        btn.getAttribute("data-eta") +
+        (dist ? " | Dist " + dist : "") +
+        " | " +
+        link
+      );
+    }
+
+    document.querySelectorAll(".waShareBtn").forEach((btn) => {
+      btn.addEventListener("click", (e) => {
+        e.stopPropagation();
+        const text = buildShareText(btn);
+        const url = "https://wa.me/?text=" + encodeURIComponent(text);
+        window.open(url, "_blank", "noopener,noreferrer");
+      });
+    });
+
+    document.querySelectorAll(".emailShareBtn").forEach((btn) => {
+      btn.addEventListener("click", (e) => {
+        e.stopPropagation();
+        const text = buildShareText(btn);
+        const subject = "Dispatch details";
+        const url =
+          "mailto:?subject=" + encodeURIComponent(subject) + "&body=" + encodeURIComponent(text);
+        window.location.href = url;
+      });
+    });
+
+    function createBasemapLayer(key) {
+      switch (key) {
+        case "terrain":
+          return L.tileLayer(
+            "https://server.arcgisonline.com/ArcGIS/rest/services/World_Topo_Map/MapServer/tile/{z}/{y}/{x}",
+            {
+              maxZoom: 19,
+              attribution:
+                'Tiles © <a href="https://www.esri.com/">Esri</a> — <a href="https://www.openstreetmap.org/copyright">OSM</a> contributors',
+            }
+          );
+        case "satellite":
+          return L.tileLayer(
+            "https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}",
+            {
+              maxZoom: 19,
+              attribution: 'Tiles © <a href="https://www.esri.com/">Esri</a>',
+            }
+          );
+        case "road":
+          return L.tileLayer(
+            "https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png",
+            {
+              maxZoom: 20,
+              subdomains: "abcd",
+              attribution:
+                '© <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> © <a href="https://carto.com/">CARTO</a>',
+            }
+          );
+        case "streets":
+        default:
+          return L.tileLayer("https://tile.openstreetmap.org/{z}/{x}/{y}.png", {
+            maxZoom: 19,
+            attribution: '© <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>',
+          });
+      }
+    }
+
+    function attachBasemapToMap(map, toolbarEl, initialKey) {
+      const keys = ["streets", "terrain", "satellite", "road"];
+      const layers = {};
+      keys.forEach((k) => {
+        layers[k] = createBasemapLayer(k);
+      });
+      let activeKey = null;
+
+      function setBasemap(key) {
+        if (!map || !layers[key] || key === activeKey) return;
+        if (activeKey && layers[activeKey]) {
+          try {
+            map.removeLayer(layers[activeKey]);
+          } catch (_) {
+            /* ignore */
+          }
+        }
+        activeKey = key;
+        layers[key].addTo(map);
+        if (toolbarEl) {
+          toolbarEl.querySelectorAll(".map-basemap-btn").forEach((btn) => {
+            const on = btn.getAttribute("data-basemap") === key;
+            btn.classList.toggle("is-active", on);
+            btn.setAttribute("aria-pressed", on ? "true" : "false");
+          });
+        }
+      }
+
+      if (toolbarEl) {
+        if (!toolbarEl.dataset.basemapDelegate) {
+          toolbarEl.dataset.basemapDelegate = "1";
+          toolbarEl.addEventListener("click", (e) => {
+            const btn = e.target.closest(".map-basemap-btn");
+            if (!btn || !toolbarEl.contains(btn)) return;
+            e.stopPropagation();
+            const cb = toolbarEl._basemapSet;
+            if (typeof cb === "function") cb(btn.getAttribute("data-basemap") || "streets");
+          });
+        }
+        toolbarEl._basemapSet = setBasemap;
+      }
+
+      setBasemap(initialKey || "streets");
+      return { setBasemap };
+    }
+
+    // --- Dashboard Leaflet map (simple / reliable) ---
+    (function () {
+      const mapEl = document.getElementById("dashboardMap");
+      if (!mapEl) return;
+
+      const dataEl = document.getElementById("dashboardMapData");
+      if (!dataEl) return;
+
+      const data = JSON.parse(dataEl.textContent || "{}");
+      const depotLat = Number.isFinite(Number(data.depotLat)) ? Number(data.depotLat) : 26.32535;
+      const depotLng = Number.isFinite(Number(data.depotLng)) ? Number(data.depotLng) : 73.2401;
+      const depotName = typeof data.depotName === "string" ? data.depotName : "";
+
+      // Schematic overlay should work even if Leaflet tiles fail or Leaflet is blocked.
+      let map = null;
+      if (typeof L !== "undefined") {
+        map = L.map("dashboardMap", {
+          zoomControl: true,
+          attributionControl: true,
+          scrollWheelZoom: false,
+        }).setView([depotLat, depotLng], 5);
+
+        const dashBar = document.getElementById("dashboardBasemapBar");
+        if (dashBar) attachBasemapToMap(map, dashBar, "streets");
+        else createBasemapLayer("streets").addTo(map);
+      }
+
+      // Depot marker (only when Leaflet is available)
+      if (map) {
+        L.circleMarker([depotLat, depotLng], {
+          radius: 9,
+          color: "#f59e0b",
+          weight: 3,
+          fillColor: "#f59e0b",
+          fillOpacity: 0.95,
+        })
+          .addTo(map)
+          .bindPopup("Depot (" + depotName + ") — Our location");
+      }
+
+      const markers = Array.isArray(data.markers) ? data.markers : [];
+
+      // Schematic overlay (offline-friendly) from the same lat/lng coords.
+      const schematicLine = document.getElementById("dashboardSchematicLine");
+      const depotDot = document.getElementById("dashboardSchematicDepotDot");
+      const stationsGroup = document.getElementById("dashboardSchematicStations");
+
+      // Schematic overlay is rendered server-side in the template (so it still appears if JS/tiles fail).
+      // Leaflet-only logic below uses lat/lng to draw polylines and markers when Leaflet is available.
+      if (schematicLine && depotDot && stationsGroup) {
+        // Intentionally no-op.
+      }
+
+      const allPoints = [[depotLat, depotLng]];
+
+      markers.forEach((m) => {
+        if (!Number.isFinite(m.lat) || !Number.isFinite(m.lng)) return;
+        allPoints.push([m.lat, m.lng]);
+
+        // Hub-and-spoke: depot → each station (only when Leaflet is available)
+        if (map) {
+          L.polyline([[depotLat, depotLng], [m.lat, m.lng]], {
+            color: "#38bdf8",
+            weight: 2,
+            opacity: 0.6,
+          }).addTo(map);
+
+          const marker = L.circleMarker([m.lat, m.lng], {
+            radius: 7,
+            color: "#34d399",
+            weight: 3,
+            fillColor: "#34d399",
+            fillOpacity: 0.85,
+          }).addTo(map);
+
+          const url = "/dispatch/" + m.token;
+          const popupHtml =
+            '<div class="text-sm">' +
+            '<div class="font-semibold" style="color:#dbeafe">' + m.vehicle + "</div>" +
+            '<div style="color:#93c5fd">' + m.label + "</div>" +
+            '<div style="color:#a5b4fc;font-size:12px;margin-top:4px;">GPS: ' + m.lat.toFixed(3) + ", " + m.lng.toFixed(3) + "</div>" +
+            '<a href="' + url + '" style="color:#22c55e;text-decoration:none;">Open QR</a>' +
+            "</div>";
+          marker.bindPopup(popupHtml);
+        }
+      });
+
+      if (map && allPoints.length >= 2) {
+        const bounds = L.latLngBounds(allPoints);
+        map.fitBounds(bounds, { padding: [18, 18], maxZoom: 10 });
+      }
+
+      if (map) setTimeout(() => map.invalidateSize(), 100);
+
+      // Fleet fullscreen map (only when Leaflet exists)
+      const fleetModal = document.getElementById("fleetMapModal");
+      const fleetPane = document.getElementById("fleetMapFullscreen");
+      const fleetClose = document.getElementById("fleetMapModalClose");
+      const fleetExpandBtn = document.getElementById("fleetMapExpandBtn");
+      let fleetFsMap = null;
+
+      function openFleetFullscreen() {
+        if (!fleetModal || !fleetPane) return;
+        fleetModal.classList.remove("hidden");
+        fleetModal.classList.add("flex");
+        fleetPane.innerHTML = "";
+
+        if (fleetFsMap) {
+          fleetFsMap.remove();
+          fleetFsMap = null;
+        }
+
+        if (typeof L !== "undefined") {
+          fleetFsMap = L.map("fleetMapFullscreen", {
+            zoomControl: true,
+            attributionControl: true,
+            scrollWheelZoom: true,
+          });
+
+          const fsBar = document.getElementById("fleetFsBasemapBar");
+          if (fsBar) attachBasemapToMap(fleetFsMap, fsBar, "streets");
+          else createBasemapLayer("streets").addTo(fleetFsMap);
+
+          const fsAllPoints = [[depotLat, depotLng]];
+          L.circleMarker([depotLat, depotLng], {
+            radius: 10,
+            color: "#f59e0b",
+            weight: 3,
+            fillColor: "#f59e0b",
+            fillOpacity: 0.95,
+          })
+            .addTo(fleetFsMap)
+            .bindPopup("Depot (" + depotName + ") — Our location");
+
+          markers.forEach((m) => {
+            if (!Number.isFinite(m.lat) || !Number.isFinite(m.lng)) return;
+            fsAllPoints.push([m.lat, m.lng]);
+
+            L.polyline([[depotLat, depotLng], [m.lat, m.lng]], {
+              color: "#38bdf8",
+              weight: 3,
+              opacity: 0.75,
+            }).addTo(fleetFsMap);
+
+            const mk = L.circleMarker([m.lat, m.lng], {
+              radius: 8,
+              color: "#34d399",
+              weight: 3,
+              fillColor: "#34d399",
+              fillOpacity: 0.9,
+            }).addTo(fleetFsMap);
+
+            const url = "/dispatch/" + m.token;
+            mk.bindPopup(
+              '<div class="text-sm">' +
+                '<div class="font-semibold" style="color:#dbeafe">' + m.vehicle + "</div>" +
+                '<div style="color:#93c5fd">' + m.label + "</div>" +
+                '<div style="color:#a5b4fc;font-size:12px;margin-top:4px;">GPS: ' + m.lat.toFixed(3) + ", " + m.lng.toFixed(3) + "</div>" +
+                '<a href="' + url + '" style="color:#22c55e;text-decoration:none;">Open QR</a>' +
+                "</div>"
+            );
+          });
+
+          if (fsAllPoints.length >= 2) {
+            const b = L.latLngBounds(fsAllPoints);
+            fleetFsMap.fitBounds(b, { padding: [56, 56], maxZoom: 10 });
+          } else {
+            fleetFsMap.setView([depotLat, depotLng], 5);
+          }
+
+          setTimeout(() => {
+            if (fleetFsMap) fleetFsMap.invalidateSize();
+          }, 150);
+        } else {
+          // Leaflet unavailable: modal still opens and the static background stays visible.
+          // (Markers/lines will be absent; schematic overlay on the page still works.)
+        }
+      }
+
+      function closeFleetFullscreen() {
+        if (!fleetModal) return;
+        fleetModal.classList.add("hidden");
+        fleetModal.classList.remove("flex");
+        if (fleetFsMap) {
+          fleetFsMap.remove();
+          fleetFsMap = null;
+        }
+        if (fleetPane) fleetPane.innerHTML = "";
+      }
+
+      // Expose handlers so the lightweight modal toggler can defer when Leaflet is available.
+      window.openFleetFullscreen = openFleetFullscreen;
+      window.closeFleetFullscreen = closeFleetFullscreen;
+
+      fleetExpandBtn?.addEventListener("click", (e) => {
+        e.stopPropagation();
+        openFleetFullscreen();
+      });
+      fleetClose?.addEventListener("click", closeFleetFullscreen);
+      fleetModal?.addEventListener("click", (e) => {
+        if (e.target === fleetModal) closeFleetFullscreen();
+      });
+
+      if (map) {
+        map.on("click", () => openFleetFullscreen());
+      } else {
+        // Leaflet unavailable: still allow opening the modal from the map area.
+        mapEl.addEventListener("click", () => openFleetFullscreen());
+      }
+    })();
+    // Fleet fullscreen modal toggling (route + depot/station schematic are server-rendered)
+    (function () {
+      const fleetModal = document.getElementById("fleetMapModal");
+      const fleetPane = document.getElementById("fleetMapFullscreen");
+      const fleetClose = document.getElementById("fleetMapModalClose");
+      const fleetExpandBtn = document.getElementById("fleetMapExpandBtn");
+      const dashboardMap = document.getElementById("dashboardMap");
+
+      if (typeof window.openFleetFullscreen === "function") return;
+      if (!fleetModal) return;
+
+      function open() {
+        fleetModal.classList.remove("hidden");
+        fleetModal.classList.add("flex");
+        if (fleetPane) fleetPane.innerHTML = "";
+      }
+
+      function close() {
+        fleetModal.classList.add("hidden");
+        fleetModal.classList.remove("flex");
+        if (fleetPane) fleetPane.innerHTML = "";
+      }
+
+      fleetExpandBtn?.addEventListener("click", (e) => {
+        e.stopPropagation();
+        open();
+      });
+      fleetClose?.addEventListener("click", (e) => {
+        e.stopPropagation();
+        close();
+      });
+      fleetModal?.addEventListener("click", (e) => {
+        if (e.target === fleetModal) close();
+      });
+      dashboardMap?.addEventListener("click", open);
+    })();
+
+  </script>
+{% endblock %}
+

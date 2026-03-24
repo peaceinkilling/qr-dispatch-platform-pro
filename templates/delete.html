@@ -1,0 +1,48 @@
+{% extends "base.html" %}
+
+{% block title %}Delete CHT — Dispatch QR{% endblock %}
+
+{% block header %}
+<div class="flex flex-col sm:flex-row sm:items-end sm:justify-between gap-4">
+  <div>
+    <div class="title text-3xl sm:text-4xl font-bold tracking-tight">Delete CHT</div>
+    <div class="muted mt-1 text-sm">Record will be moved to the deleted log with your remarks.</div>
+  </div>
+  <div class="flex gap-3">
+    <a href="/" class="btn btn-ghost">Dashboard</a>
+    <a href="/admin/edit/{{ token }}" class="btn btn-ghost">Cancel</a>
+  </div>
+</div>
+{% endblock %}
+
+{% block content %}
+  <div class="glass-strong p-4 sm:p-6 card-hover reveal">
+    <div class="mb-6 p-4 rounded-2xl bg-red-500/10 border border-red-500/30">
+      <div class="title font-semibold text-red-200">CHT to be deleted</div>
+      <div class="muted2 text-sm mt-2">
+        <span class="text-white/90 font-medium">{{ item.vehicle_number }}</span> → {{ item.destination }}
+        <span class="ml-2">| {{ item.package_count }} pkg, {{ item.total_weight_kg }} kg</span>
+        <span class="ml-2">| {{ item.driver_name }}</span>
+      </div>
+    </div>
+
+    <form method="post" action="/admin/delete/{{ token }}" class="space-y-4">
+      <div>
+        <label class="muted text-sm" for="remarks">Remarks (required for record keeping)</label>
+        <textarea
+          id="remarks"
+          name="remarks"
+          class="field mt-2 min-h-[120px]"
+          placeholder="e.g. Vehicle retired, duplicate entry, incorrect data, etc."
+          required
+        ></textarea>
+        <div class="muted2 text-xs mt-2">This will be stored in the deleted CHTs log along with the date.</div>
+      </div>
+
+      <div class="flex flex-wrap gap-3 pt-4">
+        <button type="submit" class="btn btn-danger">Delete CHT</button>
+        <a href="/admin/edit/{{ token }}" class="btn btn-ghost">Cancel</a>
+      </div>
+    </form>
+  </div>
+{% endblock %}
