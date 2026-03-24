@@ -1313,7 +1313,7 @@ def query_dispatches_hydrated(
 
 
 @app.get("/admin/login", response_class=HTMLResponse)
-def admin_login_page(request: Request, next: str = "/"):
+def admin_login_page(request: Request, next: str = "/admin/new"):
     return templates.TemplateResponse(
         request,
         "login.html",
@@ -1330,12 +1330,12 @@ def admin_login_submit(
     request: Request,
     username: str = Form(...),
     password: str = Form(...),
-    next: str = Form("/"),
+    next: str = Form("/admin/new"),
 ):
     if username == ADMIN_USERNAME and password == ADMIN_PASSWORD:
         request.session["admin_authenticated"] = True
         request.session["admin_user"] = username
-        return RedirectResponse(url=next or "/", status_code=303)
+        return RedirectResponse(url=next or "/admin/new", status_code=303)
 
     return templates.TemplateResponse(
         request,
@@ -1373,60 +1373,64 @@ def dashboard(
     weight_max: Optional[str] = None,
     sort: Optional[str] = None,
 ):
-    sync_delayed_statuses()
-    sort_key = (sort or "dispatch_desc").strip()
-    with closing(get_conn()) as conn:
-        rows = query_dispatches_hydrated(
-            conn,
-            q=q,
-            status=status,
-            destination=destination,
-            vehicle_number=vehicle_number,
-            dispatch_date=dispatch_date,
-            dispatch_date_from=dispatch_date_from,
-            dispatch_date_to=dispatch_date_to,
-            distance_range=distance_range,
-            weight_min=weight_min,
-            weight_max=weight_max,
-            sort=sort_key,
+    try:
+        sync_delayed_statuses()
+        sort_key = (sort or "dispatch_desc").strip()
+        with closing(get_conn()) as conn:
+            rows = query_dispatches_hydrated(
+                conn,
+                q=q,
+                status=status,
+                destination=destination,
+                vehicle_number=vehicle_number,
+                dispatch_date=dispatch_date,
+                dispatch_date_from=dispatch_date_from,
+                dispatch_date_to=dispatch_date_to,
+                distance_range=distance_range,
+                weight_min=weight_min,
+                weight_max=weight_max,
+                sort=sort_key,
+            )
+            stats = {
+                "all": conn.execute(f"SELECT COUNT(*) FROM {DISPATCH_TABLE}").fetchone()[0],
+                "on_route": conn.execute(
+                    f"SELECT COUNT(*) FROM {DISPATCH_TABLE} WHERE status='On Route'"
+                ).fetchone()[0],
+                "delayed": conn.execute(
+                    f"SELECT COUNT(*) FROM {DISPATCH_TABLE} WHERE status='Delayed'"
+                ).fetchone()[0],
+                "delivered": conn.execute(
+                    f"SELECT COUNT(*) FROM {DISPATCH_TABLE} WHERE status='Delivered'"
+                ).fetchone()[0],
+            }
+        hero = rows[0] if rows else None
+        return templates.TemplateResponse(
+            request,
+            "dashboard_ui.html",
+            {
+                "request": request,
+                "dispatches": rows,
+                "q": q or "",
+                "status": status or "All",
+                "destination": destination or "",
+                "vehicle_number": vehicle_number or "",
+                "dispatch_date": dispatch_date or "",
+                "dispatch_date_from": dispatch_date_from or "",
+                "dispatch_date_to": dispatch_date_to or "",
+                "distance_range": distance_range or "All",
+                "weight_min": weight_min or "",
+                "weight_max": weight_max or "",
+                "stats": stats,
+                "hero": hero,
+                "depot_lat": DEPOT_LAT,
+                "depot_lng": DEPOT_LNG,
+                "depot_name": DEPOT_NAME,
+                "sort": sort_key,
+            },
         )
-        stats = {
-            "all": conn.execute(f"SELECT COUNT(*) FROM {DISPATCH_TABLE}").fetchone()[0],
-            "on_route": conn.execute(
-                f"SELECT COUNT(*) FROM {DISPATCH_TABLE} WHERE status='On Route'"
-            ).fetchone()[0],
-            "delayed": conn.execute(
-                f"SELECT COUNT(*) FROM {DISPATCH_TABLE} WHERE status='Delayed'"
-            ).fetchone()[0],
-            "delivered": conn.execute(
-                f"SELECT COUNT(*) FROM {DISPATCH_TABLE} WHERE status='Delivered'"
-            ).fetchone()[0],
-        }
-    hero = rows[0] if rows else None
-    return templates.TemplateResponse(
-        request,
-        "dashboard_ui.html",
-        {
-            "request": request,
-            "dispatches": rows,
-            "q": q or "",
-            "status": status or "All",
-            "destination": destination or "",
-            "vehicle_number": vehicle_number or "",
-            "dispatch_date": dispatch_date or "",
-            "dispatch_date_from": dispatch_date_from or "",
-            "dispatch_date_to": dispatch_date_to or "",
-            "distance_range": distance_range or "All",
-            "weight_min": weight_min or "",
-            "weight_max": weight_max or "",
-            "stats": stats,
-            "hero": hero,
-            "depot_lat": DEPOT_LAT,
-            "depot_lng": DEPOT_LNG,
-            "depot_name": DEPOT_NAME,
-            "sort": sort_key,
-        },
-    )
+    except Exception:
+        # Keep admin usable even if dashboard hydration hits transient DB issues.
+        return RedirectResponse(url="/admin/new", status_code=303)
 
 
 @app.get("/export/dispatches.csv")
