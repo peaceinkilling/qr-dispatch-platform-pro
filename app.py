@@ -84,8 +84,8 @@ templates = Jinja2Templates(directory=str(BASE_DIR / "templates"))
 ADMIN_USERNAME = os.environ.get("ADMIN_USERNAME", "cht_mgt")
 ADMIN_PASSWORD = os.environ.get("ADMIN_PASSWORD", "Security@123")
 
-# If SESSION_SECRET is omitted, generate one for this process (sessions reset on restart).
-SESSION_SECRET = os.environ.get("SESSION_SECRET", "") or secrets.token_urlsafe(32)
+# Must be stable across workers/processes. Random per-worker secrets break sessions on multi-worker hosts.
+SESSION_SECRET = os.environ.get("SESSION_SECRET", "change-me-in-production")
 SESSION_COOKIE_SECURE = PUBLIC_BASE_URL.startswith("https://") if PUBLIC_BASE_URL else False
 
 app.add_middleware(
