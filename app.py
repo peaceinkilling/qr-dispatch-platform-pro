@@ -127,7 +127,10 @@ class AdminGateMiddleware(BaseHTTPMiddleware):
             return await call_next(request)
 
         try:
-            is_admin_authenticated = request.session.get("admin_authenticated") is True
+            # Access session via scope to avoid AssertionError when SessionMiddleware
+            # is not yet attached on this middleware hop.
+            session = request.scope.get("session") or {}
+            is_admin_authenticated = session.get("admin_authenticated") is True
         except Exception:
             # Corrupt/old session cookie should never crash the app.
             # Treat it as logged out and force clean login.
