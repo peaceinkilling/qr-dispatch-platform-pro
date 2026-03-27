@@ -217,11 +217,24 @@
 
     <div class="mt-6 detail-panel detail-pixel-panel glass-strong p-4 sm:p-5 rd-24 max-w-4xl">
       <div class="detail-panel-label">Load overview</div>
+      {% set load_pct = item.load_percent|default(0)|float %}
+      {% if load_pct >= 85 %}
+        {% set load_tone = "high" %}
+      {% elif load_pct >= 60 %}
+        {% set load_tone = "medium" %}
+      {% else %}
+        {% set load_tone = "low" %}
+      {% endif %}
       <div class="mt-3 detail-load-layout">
-        <div>
-          <div class="title detail-load-weight font-bold">{{ item.weight_display }}</div>
-          <div class="detail-panel-muted mt-1">
-            Capacity: {{ item.capacity_weight_display }}
+        <div class="detail-load-stats-card">
+          <div class="detail-load-kicker">Current load</div>
+          <div class="title detail-load-weight font-bold mt-1">{{ item.weight_display }}</div>
+          <div class="detail-panel-muted mt-1">Capacity: {{ item.capacity_weight_display }}</div>
+          <div class="detail-load-pill-row mt-3">
+            <span class="detail-load-pill detail-load-pill--{{ load_tone }}">
+              {{ item.load_percent }}% utilized
+            </span>
+            <span class="detail-load-pill">Live dispatch view</span>
           </div>
         </div>
         <div class="detail-load-visual" aria-label="CHT load percentage">
@@ -230,7 +243,7 @@
 
             <div class="detail-load-trailer">
               <div class="detail-load-cargo-track">
-                <div class="detail-load-cargo-fill" style="width: {{ item.load_percent|default(0) }}%">
+                <div class="detail-load-cargo-fill detail-load-cargo-fill--{{ load_tone }}" style="width: {{ item.load_percent|default(0) }}%">
                   <span class="detail-load-cargo-percent">{{ item.load_percent }}%</span>
                 </div>
               </div>
@@ -253,16 +266,13 @@
         </div>
       </div>
       <div class="mt-3 detail-panel-muted">
-        Percentage is based on dispatch total weight versus configured CHT load capability.
+        Color coding: Green (0-59%), Amber (60-84%), Red (85%+).
       </div>
     </div>
   </div>
 
   <div class="detail-footnote detail-pixel-footnote mt-2 py-4 px-1">
     <div class="detail-footnote-label">Shared by depot</div>
-    <p class="mt-2 detail-footnote-body max-w-3xl">
-      This page shows only non-sensitive dispatch fields (no item-level or confidential tracking data).
-    </p>
   </div>
 </div>
 
