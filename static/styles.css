@@ -1372,14 +1372,14 @@ option {
 
 .detail-load-layout {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) minmax(260px, 420px);
-  gap: 1rem 1.25rem;
+  grid-template-columns: minmax(0, 1fr) minmax(420px, 680px);
+  gap: 1rem 1.5rem;
   align-items: end;
 }
 
 .detail-load-visual {
   position: relative;
-  height: 10rem;
+  height: 13.5rem;
   border-radius: 1rem;
   background: linear-gradient(160deg, rgba(15, 23, 42, 0.22) 0%, rgba(30, 41, 59, 0.08) 100%);
   border: 1px solid rgba(148, 163, 184, 0.28);
@@ -1391,21 +1391,25 @@ option {
 
 .detail-load-truck-img {
   position: absolute;
-  inset: 0;
-  width: 100%;
+  top: -8%;
+  left: -8%;
+  width: 116%;
   height: 100%;
   object-fit: contain;
-  padding: 0.45rem 0.55rem;
+  object-position: center;
+  padding: 0;
   pointer-events: none;
+  transform: scale(1.18);
+  transform-origin: center center;
   filter: drop-shadow(0 4px 12px rgba(2, 6, 23, 0.36));
 }
 
 .detail-load-fill-track {
   position: absolute;
-  left: 1.55rem;
-  right: 6.45rem;
-  top: 2.62rem;
-  height: 2.66rem;
+  left: 14.5%;
+  right: 21.5%;
+  top: 37.5%;
+  height: 24%;
   border-radius: 0.45rem;
   border: 1px solid rgba(239, 68, 68, 0.42);
   background: linear-gradient(180deg, rgba(248, 113, 113, 0.14) 0%, rgba(127, 29, 29, 0.28) 100%);
@@ -1425,9 +1429,9 @@ option {
 .detail-load-percent-badge {
   position: absolute;
   left: 50%;
-  top: 2.45rem;
+  top: 43%;
   transform: translateX(-50%);
-  font-size: clamp(1.1rem, 1.8vw, 1.5rem);
+  font-size: clamp(1.15rem, 2vw, 1.7rem);
   font-weight: 800;
   letter-spacing: -0.03em;
   color: #f8fafc;
@@ -3013,6 +3017,29 @@ html:not(.theme-light) .detail-load-truck-img {
 @media (max-width: 1024px) {
   .detail-load-layout {
     grid-template-columns: 1fr;
+  }
+
+  .detail-load-visual {
+    height: 12rem;
+  }
+
+  .detail-load-truck-img {
+    top: -6%;
+    left: -6%;
+    width: 112%;
+    transform: scale(1.12);
+  }
+
+  .detail-load-fill-track {
+    left: 14.5%;
+    right: 22%;
+    top: 38%;
+    height: 22%;
+  }
+
+  .detail-load-percent-badge {
+    top: 43.5%;
+    font-size: clamp(1.05rem, 2.4vw, 1.45rem);
   }
 }
 
