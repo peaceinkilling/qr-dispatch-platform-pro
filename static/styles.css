@@ -1372,16 +1372,19 @@ option {
 
 .detail-load-layout {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) minmax(480px, 760px);
-  gap: 1rem 1.5rem;
-  align-items: end;
+  grid-template-columns: minmax(210px, 260px) minmax(0, 1fr);
+  gap: 1rem 1.1rem;
+  align-items: stretch;
 }
 
 .detail-load-stats-card {
-  padding: 0.9rem 1rem;
+  padding: 1rem 1rem;
   border-radius: 0.95rem;
   border: 1px solid rgba(148, 163, 184, 0.24);
   background: linear-gradient(165deg, rgba(15, 23, 42, 0.38) 0%, rgba(30, 41, 59, 0.18) 100%);
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
 }
 
 .detail-load-kicker {
@@ -1396,6 +1399,7 @@ option {
   display: flex;
   flex-wrap: wrap;
   gap: 0.45rem;
+  margin-top: 0.65rem;
 }
 
 .detail-load-pill {
@@ -1430,7 +1434,8 @@ option {
 
 .detail-load-visual {
   position: relative;
-  height: 14rem;
+  min-height: 12.8rem;
+  height: 100%;
   border-radius: 1rem;
   background: linear-gradient(160deg, rgba(15, 23, 42, 0.22) 0%, rgba(30, 41, 59, 0.08) 100%);
   border: 1px solid rgba(148, 163, 184, 0.28);
@@ -1503,6 +1508,19 @@ option {
     ),
     linear-gradient(90deg, #ef4444 0%, #fb7185 100%);
   border-right: 3px solid #2f3743;
+  box-shadow:
+    inset 0 0 18px rgba(255, 255, 255, 0.22),
+    0 0 14px rgba(248, 113, 113, 0.45),
+    0 0 30px rgba(244, 63, 94, 0.28);
+}
+
+.detail-load-cargo-fill::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(90deg, transparent 0%, rgba(255, 255, 255, 0.22) 45%, transparent 100%);
+  mix-blend-mode: screen;
+  opacity: 0.72;
 }
 
 .detail-load-cargo-fill--low {
@@ -1516,6 +1534,10 @@ option {
       rgba(255, 255, 255, 0.1) 38px
     ),
     linear-gradient(90deg, #16a34a 0%, #4ade80 100%);
+  box-shadow:
+    inset 0 0 16px rgba(255, 255, 255, 0.2),
+    0 0 14px rgba(74, 222, 128, 0.48),
+    0 0 28px rgba(22, 163, 74, 0.25);
 }
 
 .detail-load-cargo-fill--medium {
@@ -1529,6 +1551,10 @@ option {
       rgba(255, 255, 255, 0.1) 38px
     ),
     linear-gradient(90deg, #f59e0b 0%, #fbbf24 100%);
+  box-shadow:
+    inset 0 0 16px rgba(255, 255, 255, 0.2),
+    0 0 14px rgba(251, 191, 36, 0.5),
+    0 0 28px rgba(245, 158, 11, 0.25);
 }
 
 .detail-load-cargo-fill--high {
@@ -1550,7 +1576,9 @@ option {
   line-height: 1;
   font-weight: 900;
   letter-spacing: -0.04em;
-  text-shadow: 0 2px 6px rgba(0, 0, 0, 0.34);
+  text-shadow:
+    0 0 8px rgba(255, 255, 255, 0.55),
+    0 2px 8px rgba(0, 0, 0, 0.4);
 }
 
 .detail-load-cab {
@@ -3191,6 +3219,12 @@ html.theme-light .detail-load-stats-card {
   background: linear-gradient(165deg, rgba(248, 250, 252, 0.92) 0%, rgba(226, 232, 240, 0.86) 100%);
 }
 
+html.theme-light .detail-load-cargo-percent {
+  text-shadow:
+    0 0 6px rgba(255, 255, 255, 0.4),
+    0 2px 6px rgba(51, 65, 85, 0.35);
+}
+
 html.theme-light .detail-load-kicker {
   color: rgba(71, 85, 105, 0.92);
 }
@@ -3214,10 +3248,12 @@ html:not(.theme-light) .detail-load-cab-shell {
 @media (max-width: 1024px) {
   .detail-load-layout {
     grid-template-columns: 1fr;
+    gap: 0.85rem;
   }
 
   .detail-load-visual {
     height: 12.5rem;
+    min-height: 12.5rem;
   }
 
   .detail-load-stats-card {
@@ -3259,6 +3295,7 @@ html:not(.theme-light) .detail-load-cab-shell {
 
   .detail-load-visual {
     height: 10.75rem;
+    min-height: 10.75rem;
     border-radius: 0.9rem;
   }
 
