@@ -5,11 +5,14 @@ import io
 import random
 import secrets
 import sqlite3
+import smtplib
+import hashlib
 from contextlib import closing
 import csv
 from datetime import datetime, timedelta, time
 from pathlib import Path
 from typing import Optional
+from email.message import EmailMessage
 
 NATURE_ROMAN = {"1": "I", "2": "II", "3": "III", "4": "IV"}
 
@@ -25,7 +28,6 @@ def nature_to_roman(value: str) -> str:
     return ", ".join(NATURE_ROMAN.get(p, p) for p in sorted(parts, key=sort_key))
 
 import qrcode
-import pyotp
 from fastapi import FastAPI, Form, HTTPException, Request
 from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
@@ -76,6 +78,7 @@ DISPATCH_TABLE = "dispatches"
 LOCATIONS_TABLE = "locations"
 PIN_CODES_TABLE = "pincodes"
 DELETED_DISPATCHES_TABLE = "deleted_dispatches"
+TRUSTED_ADMIN_DEVICES_TABLE = "trusted_admin_devices"
 
 app = FastAPI(title="Dispatch QR Platform", version="3.0")
 app.mount("/static", StaticFiles(directory=str(BASE_DIR / "static")), name="static")
@@ -84,7 +87,13 @@ templates = Jinja2Templates(directory=str(BASE_DIR / "templates"))
 # ---- Admin authentication (simple session cookie) ----
 ADMIN_USERNAME = os.environ.get("ADMIN_USERNAME", "cht_mgt")
 ADMIN_PASSWORD = os.environ.get("ADMIN_PASSWORD", "Security@123")
-ADMIN_2FA_SECRET = os.environ.get("ADMIN_2FA_SECRET", "JBSWY3DPEHPK3PXP").strip()
+ADMIN_2FA_EMAIL = os.environ.get("ADMIN_2FA_EMAIL", "peaceinkilling@gmail.com").strip()
+
+SMTP_HOST = os.environ.get("SMTP_HOST", "").strip()
+SMTP_PORT = int(os.environ.get("SMTP_PORT", "587").strip() or "587")
+SMTP_USERNAME = os.environ.get("SMTP_USERNAME", "").strip()
+SMTP_PASSWORD = os.environ.get("SMTP_PASSWORD", "").strip()
+SMTP_FROM_EMAIL = os.environ.get("SMTP_FROM_EMAIL", SMTP_USERNAME or ADMIN_2FA_EMAIL).strip()
 
 # Must be stable across workers/processes. Random per-worker secrets break sessions on multi-worker hosts.
 SESSION_SECRET = os.environ.get("SESSION_SECRET", "change-me-in-production")
@@ -124,6 +133,11 @@ class AdminGateMiddleware(BaseHTTPMiddleware):
             # is not yet attached on this middleware hop.
             session = request.scope.get("session") or {}
             is_admin_authenticated = session.get("admin_authenticated") is True
+            if not is_admin_authenticated:
+                device_token = request.cookies.get("admin_device_token", "")
+                if device_token and _is_trusted_device(device_token):
+                    is_admin_authenticated = True
+                    session["admin_authenticated"] = True
         except Exception:
             # Corrupt/old session cookie should never crash the app.
             # Treat it as logged out and force clean login.
@@ -177,6 +191,79 @@ def get_public_base_url(request: Request) -> str:
 
 def _normalize_otp(value: str) -> str:
     return "".join(ch for ch in (value or "") if ch.isdigit())
+
+
+def _hash_token(value: str) -> str:
+    return hashlib.sha256((value or "").encode("utf-8")).hexdigest()
+
+
+def _send_login_codes_email(one_time_code: str, device_code: str) -> tuple[bool, str]:
+    """
+    Sends two codes:
+    - one-time code: current browser session only
+    - device code: trust current device for long-term access
+    """
+    if not (SMTP_HOST and SMTP_FROM_EMAIL and ADMIN_2FA_EMAIL):
+        return False, "Email service is not configured."
+    msg = EmailMessage()
+    msg["Subject"] = "CHT Admin Login Verification Codes"
+    msg["From"] = SMTP_FROM_EMAIL
+    msg["To"] = ADMIN_2FA_EMAIL
+    msg.set_content(
+        (
+            "Use one of these login codes:\n\n"
+            f"One-time access code: {one_time_code}\n"
+            f"Trusted device code: {device_code}\n\n"
+            "One-time code: grants access for this login only.\n"
+            "Trusted device code: approves this device for future logins.\n\n"
+            "Codes expire in 10 minutes."
+        )
+    )
+    try:
+        with smtplib.SMTP(SMTP_HOST, SMTP_PORT, timeout=20) as server:
+            server.starttls()
+            if SMTP_USERNAME:
+                server.login(SMTP_USERNAME, SMTP_PASSWORD)
+            server.send_message(msg)
+        return True, ""
+    except Exception:
+        return False, "Failed to send verification email."
+
+
+def _register_trusted_device(token: str, user_agent: str) -> None:
+    now = datetime.utcnow().isoformat(timespec="seconds")
+    with closing(get_conn()) as conn:
+        conn.execute(
+            f"""
+            INSERT OR REPLACE INTO {TRUSTED_ADMIN_DEVICES_TABLE}
+            (token_hash, device_label, created_at, last_used_at, revoked_at)
+            VALUES (?, ?, ?, ?, NULL)
+            """,
+            (_hash_token(token), (user_agent or "")[:240], now, now),
+        )
+        conn.commit()
+
+
+def _is_trusted_device(token: str) -> bool:
+    if not token:
+        return False
+    token_hash = _hash_token(token)
+    with closing(get_conn()) as conn:
+        row = conn.execute(
+            f"""
+            SELECT id FROM {TRUSTED_ADMIN_DEVICES_TABLE}
+            WHERE token_hash = ? AND revoked_at IS NULL
+            """,
+            (token_hash,),
+        ).fetchone()
+        if not row:
+            return False
+        conn.execute(
+            f"UPDATE {TRUSTED_ADMIN_DEVICES_TABLE} SET last_used_at = ? WHERE token_hash = ?",
+            (datetime.utcnow().isoformat(timespec="seconds"), token_hash),
+        )
+        conn.commit()
+    return True
 
 
 @app.get("/healthz")
@@ -899,6 +986,18 @@ def init_db() -> None:
             );
             """
         )
+        conn.executescript(
+            f"""
+            CREATE TABLE IF NOT EXISTS {TRUSTED_ADMIN_DEVICES_TABLE} (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                token_hash TEXT NOT NULL UNIQUE,
+                device_label TEXT DEFAULT '',
+                created_at TEXT NOT NULL,
+                last_used_at TEXT NOT NULL,
+                revoked_at TEXT DEFAULT NULL
+            );
+            """
+        )
 
         existing_cols = {
             r["name"] for r in conn.execute("PRAGMA table_info(dispatches)").fetchall()
@@ -1347,10 +1446,19 @@ def admin_login_submit(
     next: str = Form("/admin/new"),
 ):
     if username == ADMIN_USERNAME and password == ADMIN_PASSWORD:
+        one_time_code = f"{random.randint(0, 999999):06d}"
+        device_code = f"{random.randint(0, 999999):06d}"
+        sent, msg = _send_login_codes_email(one_time_code, device_code)
         request.session["admin_authenticated"] = False
         request.session["admin_user"] = username
         request.session["admin_2fa_pending"] = True
         request.session["admin_2fa_next"] = next or "/admin/new"
+        request.session["admin_2fa_code_one_time"] = one_time_code
+        request.session["admin_2fa_code_device"] = device_code
+        request.session["admin_2fa_expires_at"] = (
+            datetime.utcnow() + timedelta(minutes=10)
+        ).isoformat(timespec="seconds")
+        request.session["admin_2fa_email_status"] = "sent" if sent else (msg or "failed")
         return RedirectResponse(url="/admin/2fa", status_code=303)
 
     return templates.TemplateResponse(
@@ -1374,7 +1482,12 @@ def admin_2fa_page(request: Request):
     return templates.TemplateResponse(
         request,
         "admin_2fa.html",
-        {"request": request, "error": ""},
+        {
+            "request": request,
+            "error": "",
+            "email_status": request.session.get("admin_2fa_email_status", ""),
+            "admin_2fa_email": ADMIN_2FA_EMAIL,
+        },
     )
 
 
@@ -1384,19 +1497,49 @@ def admin_2fa_submit(request: Request, otp_code: str = Form("")):
         return RedirectResponse(url="/admin/login", status_code=303)
 
     code = _normalize_otp(otp_code)
-    ok = False
+    expires_at_raw = request.session.get("admin_2fa_expires_at", "")
+    one_time_code = request.session.get("admin_2fa_code_one_time", "")
+    device_code = request.session.get("admin_2fa_code_device", "")
+    expired = False
     try:
-        if ADMIN_2FA_SECRET:
-            totp = pyotp.TOTP(ADMIN_2FA_SECRET)
-            ok = bool(totp.verify(code, valid_window=1))
+        exp_dt = datetime.fromisoformat(expires_at_raw) if expires_at_raw else None
+        expired = bool(exp_dt and datetime.utcnow() > exp_dt)
     except Exception:
-        ok = False
+        expired = True
 
-    if not ok:
+    if expired:
+        request.session["admin_2fa_pending"] = False
+        request.session.pop("admin_2fa_code_one_time", None)
+        request.session.pop("admin_2fa_code_device", None)
+        request.session.pop("admin_2fa_expires_at", None)
         return templates.TemplateResponse(
             request,
             "admin_2fa.html",
-            {"request": request, "error": "Invalid verification code."},
+            {
+                "request": request,
+                "error": "Code expired. Please login again.",
+                "email_status": request.session.get("admin_2fa_email_status", ""),
+                "admin_2fa_email": ADMIN_2FA_EMAIL,
+            },
+            status_code=401,
+        )
+
+    mode = ""
+    if code and code == str(one_time_code):
+        mode = "one_time"
+    elif code and code == str(device_code):
+        mode = "device"
+
+    if not mode:
+        return templates.TemplateResponse(
+            request,
+            "admin_2fa.html",
+            {
+                "request": request,
+                "error": "Invalid verification code.",
+                "email_status": request.session.get("admin_2fa_email_status", ""),
+                "admin_2fa_email": ADMIN_2FA_EMAIL,
+            },
             status_code=401,
         )
 
@@ -1404,7 +1547,24 @@ def admin_2fa_submit(request: Request, otp_code: str = Form("")):
     request.session["admin_authenticated"] = True
     request.session["admin_2fa_pending"] = False
     request.session.pop("admin_2fa_next", None)
-    return RedirectResponse(url=next_url, status_code=303)
+    request.session.pop("admin_2fa_code_one_time", None)
+    request.session.pop("admin_2fa_code_device", None)
+    request.session.pop("admin_2fa_expires_at", None)
+
+    response = RedirectResponse(url=next_url, status_code=303)
+    if mode == "device":
+        device_token = secrets.token_urlsafe(32)
+        _register_trusted_device(device_token, request.headers.get("user-agent", ""))
+        response.set_cookie(
+            "admin_device_token",
+            device_token,
+            max_age=60 * 60 * 24 * 365 * 5,
+            httponly=True,
+            secure=SESSION_COOKIE_SECURE,
+            samesite="lax",
+            path="/",
+        )
+    return response
 
 
 @app.get("/admin/logout", response_class=HTMLResponse)
@@ -1413,7 +1573,9 @@ def admin_logout(request: Request):
         request.session.clear()
     except Exception:
         pass
-    return RedirectResponse(url="/admin/login", status_code=303)
+    response = RedirectResponse(url="/admin/login", status_code=303)
+    response.delete_cookie("admin_device_token", path="/")
+    return response
 
 
 @app.get("/", response_class=HTMLResponse)

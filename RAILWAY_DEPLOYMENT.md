@@ -77,7 +77,12 @@ In Railway service variables, add:
 - `SESSION_SECRET=<long-random-secret>`
 - `ADMIN_USERNAME=cht_mgt`
 - `ADMIN_PASSWORD=Security@123` (or your own password)
-- `ADMIN_2FA_SECRET=<base32-secret-for-authenticator-app>`
+- `ADMIN_2FA_EMAIL=peaceinkilling@gmail.com`
+- `SMTP_HOST=<smtp-host>`
+- `SMTP_PORT=587`
+- `SMTP_USERNAME=<smtp-user>`
+- `SMTP_PASSWORD=<smtp-pass-or-app-password>`
+- `SMTP_FROM_EMAIL=<verified-sender-email>`
 
 ---
 
