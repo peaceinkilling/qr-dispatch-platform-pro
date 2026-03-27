@@ -1379,7 +1379,7 @@ option {
 
 .detail-load-visual {
   position: relative;
-  height: 13.5rem;
+  height: 14rem;
   border-radius: 1rem;
   background: linear-gradient(160deg, rgba(15, 23, 42, 0.22) 0%, rgba(30, 41, 59, 0.08) 100%);
   border: 1px solid rgba(148, 163, 184, 0.28);
@@ -1389,57 +1389,40 @@ option {
   overflow: hidden;
 }
 
-.detail-load-truck-img {
+.detail-load-svg {
   position: absolute;
-  top: -8%;
-  left: -8%;
-  width: 116%;
+  inset: 0;
+  width: 100%;
   height: 100%;
-  object-fit: contain;
-  object-position: center;
-  padding: 0;
   pointer-events: none;
-  transform: scale(1.18);
-  transform-origin: center center;
-  filter: drop-shadow(0 4px 12px rgba(2, 6, 23, 0.36));
 }
 
-.detail-load-fill-track {
-  position: absolute;
-  left: 14.5%;
-  right: 21.5%;
-  top: 37.5%;
-  height: 24%;
-  border-radius: 0.45rem;
-  border: 1px solid rgba(239, 68, 68, 0.42);
-  background: linear-gradient(180deg, rgba(248, 113, 113, 0.14) 0%, rgba(127, 29, 29, 0.28) 100%);
-  overflow: hidden;
-  -webkit-backdrop-filter: blur(1px);
-  backdrop-filter: blur(1px);
+.detail-load-truck-svg-image {
+  filter: drop-shadow(0 4px 14px rgba(2, 6, 23, 0.4));
 }
 
-.detail-load-fill-bar {
-  position: absolute;
-  inset: 0 auto 0 0;
-  min-width: 1rem;
-  background: linear-gradient(90deg, #dc2626 0%, #ef4444 52%, #f87171 100%);
-  box-shadow: inset 0 0 0 1px rgba(254, 202, 202, 0.2);
+.detail-load-trailer-bg {
+  fill: rgba(30, 41, 59, 0.24);
 }
 
-.detail-load-percent-badge {
-  position: absolute;
-  left: 50%;
-  top: 43%;
-  transform: translateX(-50%);
-  font-size: clamp(1.15rem, 2vw, 1.7rem);
+.detail-load-trailer-border {
+  fill: none;
+  stroke: rgba(248, 113, 113, 0.48);
+  stroke-width: 2;
+}
+
+.detail-load-svg-percent {
   font-weight: 800;
+  font-size: 52px;
   letter-spacing: -0.03em;
+  text-anchor: middle;
+  dominant-baseline: middle;
   color: #f8fafc;
+  fill: #f8fafc;
   text-shadow: 0 2px 8px rgba(2, 6, 23, 0.4);
-  padding: 0.12rem 0.55rem;
-  border-radius: 9999px;
-  background: rgba(15, 23, 42, 0.28);
-  border: 1px solid rgba(226, 232, 240, 0.2);
+  paint-order: stroke;
+  stroke: rgba(15, 23, 42, 0.5);
+  stroke-width: 6px;
 }
 
 .detail-panel-muted {
@@ -2997,19 +2980,20 @@ html.theme-light .detail-load-visual {
   border-color: rgba(51, 65, 85, 0.2);
 }
 
-html.theme-light .detail-load-fill-track {
-  background: linear-gradient(180deg, rgba(254, 226, 226, 0.7) 0%, rgba(252, 165, 165, 0.58) 100%);
-  border-color: rgba(220, 38, 38, 0.35);
+html.theme-light .detail-load-trailer-bg {
+  fill: rgba(100, 116, 139, 0.14);
 }
 
-html.theme-light .detail-load-percent-badge {
-  color: #0f172a;
-  text-shadow: none;
-  background: rgba(255, 255, 255, 0.72);
-  border-color: rgba(100, 116, 139, 0.3);
+html.theme-light .detail-load-trailer-border {
+  stroke: rgba(220, 38, 38, 0.5);
 }
 
-html:not(.theme-light) .detail-load-truck-img {
+html.theme-light .detail-load-svg-percent {
+  fill: #fff;
+  stroke: rgba(127, 29, 29, 0.45);
+}
+
+html:not(.theme-light) .detail-load-truck-svg-image {
   filter: grayscale(0.35) brightness(0.58) contrast(1.08) saturate(0.55)
     drop-shadow(0 6px 14px rgba(2, 6, 23, 0.55));
 }
@@ -3020,26 +3004,11 @@ html:not(.theme-light) .detail-load-truck-img {
   }
 
   .detail-load-visual {
-    height: 12rem;
+    height: 12.2rem;
   }
 
-  .detail-load-truck-img {
-    top: -6%;
-    left: -6%;
-    width: 112%;
-    transform: scale(1.12);
-  }
-
-  .detail-load-fill-track {
-    left: 14.5%;
-    right: 22%;
-    top: 38%;
-    height: 22%;
-  }
-
-  .detail-load-percent-badge {
-    top: 43.5%;
-    font-size: clamp(1.05rem, 2.4vw, 1.45rem);
+  .detail-load-svg-percent {
+    font-size: 46px;
   }
 }
 
