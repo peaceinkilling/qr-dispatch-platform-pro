@@ -75,6 +75,9 @@
           <div>
             <div class="detail-panel-label">Location preview</div>
             <div class="title detail-location-title font-bold mt-1">{{ item.to_display }}</div>
+            <div class="detail-panel-muted mt-1">
+              Dispatch date: <span class="font-semibold text-slate-200">{{ item.dispatch_display }}</span>
+            </div>
           </div>
           <span class="detail-map-hint hidden sm:inline">Tap map for full screen</span>
         </div>
@@ -571,7 +574,7 @@
               [depotLat, depotLng],
               [lat, lng],
             ],
-            { color: "#38bdf8", weight: 4, opacity: 0.9 }
+            { color: "#38bdf8", weight: 6, opacity: 0.95 }
           ).addTo(inlineMap);
           const locFb = document.getElementById("locationFallbackLine");
           if (locFb) locFb.style.display = "none";
@@ -645,6 +648,13 @@
                 const fsBar = document.getElementById("fullscreenBasemapBar");
                 attachBasemapToMap(fullscreenMap, fsBar, "streets");
                 L.circleMarker([depotLat, depotLng], { radius: 10, color: "#f59e0b", weight: 3, fillColor: "#f59e0b", fillOpacity: 0.95 }).addTo(fullscreenMap).bindPopup("Depot ({{ depot_name | e }})");
+                L.polyline(
+                  [
+                    [depotLat, depotLng],
+                    [lat, lng],
+                  ],
+                  { color: "#38bdf8", weight: 7, opacity: 0.98 }
+                ).addTo(fullscreenMap);
                 L.circleMarker([lat, lng], { radius: 9, color: "#34d399", weight: 3, fillColor: "#34d399", fillOpacity: 0.9 }).addTo(fullscreenMap).bindPopup(locationMap.getAttribute("data-name") || "");
                 // Hide only the fallback line once Leaflet draws.
                 const fbLine = document.getElementById("detailMapFallbackLine");
