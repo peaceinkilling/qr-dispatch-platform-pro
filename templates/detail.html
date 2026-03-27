@@ -225,43 +225,31 @@
           </div>
         </div>
         <div class="detail-load-visual" aria-label="CHT load percentage">
-          <svg
-            class="detail-load-svg"
-            viewBox="0 0 1200 360"
-            role="img"
-            aria-label="Truck load {{ item.load_percent }} percent"
-          >
-            <defs>
-              <clipPath id="trailerClip" clipPathUnits="userSpaceOnUse">
-                <rect x="128" y="122" width="744" height="118" rx="8"></rect>
-              </clipPath>
-              <linearGradient id="loadGradient" x1="0%" y1="0%" x2="100%" y2="0%">
-                <stop offset="0%" stop-color="#dc2626"></stop>
-                <stop offset="55%" stop-color="#ef4444"></stop>
-                <stop offset="100%" stop-color="#fca5a5"></stop>
-              </linearGradient>
-            </defs>
+          <div class="detail-load-truck-assembly" role="img" aria-label="Truck load {{ item.load_percent }} percent">
+            <div class="detail-load-truck-shadow"></div>
 
-            <image
-              href="/truck-image"
-              x="28"
-              y="36"
-              width="1144"
-              height="284"
-              preserveAspectRatio="xMidYMid meet"
-              class="detail-load-truck-svg-image"
-            />
+            <div class="detail-load-trailer">
+              <div class="detail-load-cargo-track">
+                <div class="detail-load-cargo-fill" style="width: {{ item.load_percent|default(0) }}%">
+                  <span class="detail-load-cargo-percent">{{ item.load_percent }}%</span>
+                </div>
+              </div>
 
-            <g clip-path="url(#trailerClip)">
-              <rect x="128" y="122" width="744" height="118" class="detail-load-trailer-bg"></rect>
-              <g transform="translate(128 122) scale({{ (item.load_percent|default(0)|float) / 100 }},1)">
-                <rect x="0" y="0" width="744" height="118" fill="url(#loadGradient)"></rect>
-              </g>
-            </g>
+              <div class="detail-load-wheel detail-load-wheel-t1"><div class="detail-load-rim"></div></div>
+              <div class="detail-load-wheel detail-load-wheel-t2"><div class="detail-load-rim"></div></div>
+              <div class="detail-load-wheel detail-load-wheel-t3"><div class="detail-load-rim"></div></div>
+            </div>
 
-            <rect x="128" y="122" width="744" height="118" class="detail-load-trailer-border"></rect>
-            <text x="500" y="188" class="detail-load-svg-percent">{{ item.load_percent }}%</text>
-          </svg>
+            <div class="detail-load-cab">
+              <div class="detail-load-cab-shell">
+                <div class="detail-load-windshield"></div>
+                <div class="detail-load-grille"></div>
+              </div>
+              <div class="detail-load-hitch"></div>
+              <div class="detail-load-wheel detail-load-wheel-c1"><div class="detail-load-rim"></div></div>
+              <div class="detail-load-wheel detail-load-wheel-c2"><div class="detail-load-rim"></div></div>
+            </div>
+          </div>
         </div>
       </div>
       <div class="mt-3 detail-panel-muted">
