@@ -221,19 +221,22 @@
             Capacity: {{ item.capacity_weight_display }}
           </div>
         </div>
-        <div class="detail-load-vehicle" aria-label="CHT load percentage">
-          <div class="detail-load-cabin"></div>
-          <div class="detail-load-trailer">
+        <div class="detail-load-visual" aria-label="CHT load percentage">
+          <img
+            src="/truck-image"
+            alt="CHT truck load visual"
+            class="detail-load-truck-img"
+            width="620"
+            height="180"
+          />
+          <div class="detail-load-fill-track" aria-hidden="true">
             <div
               id="loadBarFill"
-              class="detail-load-trailer-fill"
+              class="detail-load-fill-bar"
               style="width: {{ item.load_percent|default(0) }}%"
             ></div>
-            <div class="detail-load-percent">{{ item.load_percent }}%</div>
           </div>
-          <div class="detail-load-wheel detail-load-wheel--one"></div>
-          <div class="detail-load-wheel detail-load-wheel--two"></div>
-          <div class="detail-load-wheel detail-load-wheel--three"></div>
+          <div class="detail-load-percent-badge">{{ item.load_percent }}%</div>
         </div>
       </div>
       <div class="mt-3 detail-panel-muted">

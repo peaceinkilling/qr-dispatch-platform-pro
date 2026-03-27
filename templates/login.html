@@ -22,6 +22,7 @@
 
     <form method="post" action="/admin/login" class="space-y-4">
       <input type="hidden" name="next" value="{{ next }}" />
+      <input type="hidden" name="entry" value="{{ entry or '' }}" />
 
       <div>
         <label class="muted text-sm" for="username">ID</label>
@@ -38,7 +39,7 @@
       </div>
 
       <div class="muted2 text-xs pt-2">
-        Public QR pages never require login.
+        Public QR pages never require login. Admin page uses a private access link + credentials.
       </div>
     </form>
   </div>

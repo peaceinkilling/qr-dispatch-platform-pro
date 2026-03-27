@@ -29,7 +29,7 @@ def nature_to_roman(value: str) -> str:
 
 import qrcode
 from fastapi import FastAPI, Form, HTTPException, Request
-from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse, StreamingResponse
+from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, RedirectResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 from starlette.middleware.base import BaseHTTPMiddleware
@@ -88,15 +88,26 @@ templates = Jinja2Templates(directory=str(BASE_DIR / "templates"))
 ADMIN_USERNAME = os.environ.get("ADMIN_USERNAME", "cht_mgt")
 ADMIN_PASSWORD = os.environ.get("ADMIN_PASSWORD", "Security@123")
 ADMIN_2FA_EMAIL = os.environ.get("ADMIN_2FA_EMAIL", "peaceinkilling@gmail.com").strip()
+ADMIN_REQUIRE_2FA = os.environ.get("ADMIN_REQUIRE_2FA", "false").strip().lower() in ("1", "true", "yes", "on")
+ADMIN_ENTRY_TOKEN = os.environ.get(
+    "ADMIN_ENTRY_TOKEN",
+    "XgZt0dfEZYvptf4i-clhxsjz9SsK2hyk0vWRJX30K60",
+).strip()
 
 SMTP_HOST = os.environ.get("SMTP_HOST", "").strip()
 SMTP_PORT = int(os.environ.get("SMTP_PORT", "587").strip() or "587")
 SMTP_USERNAME = os.environ.get("SMTP_USERNAME", "").strip()
 SMTP_PASSWORD = os.environ.get("SMTP_PASSWORD", "").strip()
 SMTP_FROM_EMAIL = os.environ.get("SMTP_FROM_EMAIL", SMTP_USERNAME or ADMIN_2FA_EMAIL).strip()
+ADMIN_TRUSTED_DEVICE_MAX_AGE_DAYS = int(
+    os.environ.get("ADMIN_TRUSTED_DEVICE_MAX_AGE_DAYS", "1825").strip() or "1825"
+)
 
 # Must be stable across workers/processes. Random per-worker secrets break sessions on multi-worker hosts.
-SESSION_SECRET = os.environ.get("SESSION_SECRET", "change-me-in-production")
+SESSION_SECRET = os.environ.get(
+    "SESSION_SECRET",
+    "O0nfjD9qFAsbsyWv45quyj3VyIya3yPzvbmnApoqFqc-vMVNOVkzBotfYSGf5neA",
+)
 SESSION_COOKIE_SECURE = PUBLIC_BASE_URL.startswith("https://") if PUBLIC_BASE_URL else False
 
 class AdminGateMiddleware(BaseHTTPMiddleware):
@@ -165,9 +176,7 @@ class AdminGateMiddleware(BaseHTTPMiddleware):
         next_path = path
         if request.url.query:
             next_path = f"{next_path}?{request.url.query}"
-        login_url = "/admin/login"
-        if next_path:
-            login_url = f"{login_url}?next={quote(next_path, safe='')}"
+        login_url = _admin_login_url(next_path)
         return RedirectResponse(url=login_url, status_code=307)
 
 
@@ -179,6 +188,18 @@ app.add_middleware(
     https_only=SESSION_COOKIE_SECURE,
     same_site="lax",
 )
+
+
+def _admin_login_url(next_path: str = "/admin/new") -> str:
+    base = "/admin/login"
+    query_parts = []
+    if next_path:
+        query_parts.append(f"next={quote(next_path, safe='')}")
+    if ADMIN_ENTRY_TOKEN:
+        query_parts.append(f"entry={quote(ADMIN_ENTRY_TOKEN, safe='')}")
+    if query_parts:
+        return f"{base}?{'&'.join(query_parts)}"
+    return base
 
 
 def get_public_base_url(request: Request) -> str:
@@ -203,8 +224,17 @@ def _send_login_codes_email(one_time_code: str, device_code: str) -> tuple[bool,
     - one-time code: current browser session only
     - device code: trust current device for long-term access
     """
-    if not (SMTP_HOST and SMTP_FROM_EMAIL and ADMIN_2FA_EMAIL):
-        return False, "Email service is not configured."
+    missing = []
+    if not SMTP_HOST:
+        missing.append("SMTP_HOST")
+    if not SMTP_FROM_EMAIL:
+        missing.append("SMTP_FROM_EMAIL")
+    if not ADMIN_2FA_EMAIL:
+        missing.append("ADMIN_2FA_EMAIL")
+    if SMTP_USERNAME and not SMTP_PASSWORD:
+        missing.append("SMTP_PASSWORD")
+    if missing:
+        return False, f"Email service is not configured. Missing: {', '.join(missing)}"
     msg = EmailMessage()
     msg["Subject"] = "CHT Admin Login Verification Codes"
     msg["From"] = SMTP_FROM_EMAIL
@@ -1425,8 +1455,18 @@ def query_dispatches_hydrated(
     return rows
 
 
+@app.get("/truck-image")
+def truck_image():
+    image_path = BASE_DIR / "fdeca998-e75f-4fd6-8189-b96d8652d0dd-removebg-preview.png"
+    if not image_path.exists():
+        raise HTTPException(status_code=404, detail="Truck image not found")
+    return FileResponse(str(image_path), media_type="image/png")
+
+
 @app.get("/admin/login", response_class=HTMLResponse)
-def admin_login_page(request: Request, next: str = "/admin/new"):
+def admin_login_page(request: Request, next: str = "/admin/new", entry: str = ""):
+    if ADMIN_ENTRY_TOKEN and entry != ADMIN_ENTRY_TOKEN:
+        raise HTTPException(status_code=404, detail="Not found")
     return templates.TemplateResponse(
         request,
         "login.html",
@@ -1434,6 +1474,7 @@ def admin_login_page(request: Request, next: str = "/admin/new"):
             "request": request,
             "error": "",
             "next": next,
+            "entry": entry,
         },
     )
 
@@ -1444,8 +1485,18 @@ def admin_login_submit(
     username: str = Form(...),
     password: str = Form(...),
     next: str = Form("/admin/new"),
+    entry: str = Form(""),
 ):
+    if ADMIN_ENTRY_TOKEN and entry != ADMIN_ENTRY_TOKEN:
+        raise HTTPException(status_code=404, detail="Not found")
+
     if username == ADMIN_USERNAME and password == ADMIN_PASSWORD:
+        if not ADMIN_REQUIRE_2FA:
+            request.session["admin_authenticated"] = True
+            request.session["admin_user"] = username
+            request.session["admin_2fa_pending"] = False
+            return RedirectResponse(url=next or "/admin/new", status_code=303)
+
         one_time_code = f"{random.randint(0, 999999):06d}"
         device_code = f"{random.randint(0, 999999):06d}"
         sent, msg = _send_login_codes_email(one_time_code, device_code)
@@ -1468,6 +1519,7 @@ def admin_login_submit(
             "request": request,
             "error": "Invalid credentials.",
             "next": next,
+            "entry": entry,
         },
         status_code=401,
     )
@@ -1475,6 +1527,8 @@ def admin_login_submit(
 
 @app.get("/admin/2fa", response_class=HTMLResponse)
 def admin_2fa_page(request: Request):
+    if not ADMIN_REQUIRE_2FA:
+        return RedirectResponse(url="/admin/new", status_code=303)
     if request.session.get("admin_authenticated") is True:
         return RedirectResponse(url="/admin/new", status_code=303)
     if request.session.get("admin_2fa_pending") is not True:
@@ -1493,8 +1547,10 @@ def admin_2fa_page(request: Request):
 
 @app.post("/admin/2fa")
 def admin_2fa_submit(request: Request, otp_code: str = Form("")):
+    if not ADMIN_REQUIRE_2FA:
+        return RedirectResponse(url="/admin/new", status_code=303)
     if request.session.get("admin_2fa_pending") is not True:
-        return RedirectResponse(url="/admin/login", status_code=303)
+        return RedirectResponse(url=_admin_login_url(), status_code=303)
 
     code = _normalize_otp(otp_code)
     expires_at_raw = request.session.get("admin_2fa_expires_at", "")
@@ -1558,7 +1614,7 @@ def admin_2fa_submit(request: Request, otp_code: str = Form("")):
         response.set_cookie(
             "admin_device_token",
             device_token,
-            max_age=60 * 60 * 24 * 365 * 5,
+            max_age=60 * 60 * 24 * max(1, ADMIN_TRUSTED_DEVICE_MAX_AGE_DAYS),
             httponly=True,
             secure=SESSION_COOKIE_SECURE,
             samesite="lax",
@@ -1573,7 +1629,7 @@ def admin_logout(request: Request):
         request.session.clear()
     except Exception:
         pass
-    response = RedirectResponse(url="/admin/login", status_code=303)
+    response = RedirectResponse(url=_admin_login_url(), status_code=303)
     response.delete_cookie("admin_device_token", path="/")
     return response
 
