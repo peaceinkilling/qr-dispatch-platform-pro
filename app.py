@@ -88,15 +88,6 @@ ADMIN_PASSWORD = os.environ.get("ADMIN_PASSWORD", "Security@123")
 SESSION_SECRET = os.environ.get("SESSION_SECRET", "change-me-in-production")
 SESSION_COOKIE_SECURE = PUBLIC_BASE_URL.startswith("https://") if PUBLIC_BASE_URL else False
 
-app.add_middleware(
-    SessionMiddleware,
-    secret_key=SESSION_SECRET,
-    session_cookie="admin_session",
-    https_only=SESSION_COOKIE_SECURE,
-    same_site="lax",
-)
-
-
 class AdminGateMiddleware(BaseHTTPMiddleware):
     """
     Public pages:
@@ -165,6 +156,13 @@ class AdminGateMiddleware(BaseHTTPMiddleware):
 
 
 app.add_middleware(AdminGateMiddleware)
+app.add_middleware(
+    SessionMiddleware,
+    secret_key=SESSION_SECRET,
+    session_cookie="admin_session",
+    https_only=SESSION_COOKIE_SECURE,
+    same_site="lax",
+)
 
 
 def get_public_base_url(request: Request) -> str:
