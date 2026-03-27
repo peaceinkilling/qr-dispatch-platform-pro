@@ -25,6 +25,7 @@ def nature_to_roman(value: str) -> str:
     return ", ".join(NATURE_ROMAN.get(p, p) for p in sorted(parts, key=sort_key))
 
 import qrcode
+import pyotp
 from fastapi import FastAPI, Form, HTTPException, Request
 from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
@@ -83,6 +84,7 @@ templates = Jinja2Templates(directory=str(BASE_DIR / "templates"))
 # ---- Admin authentication (simple session cookie) ----
 ADMIN_USERNAME = os.environ.get("ADMIN_USERNAME", "cht_mgt")
 ADMIN_PASSWORD = os.environ.get("ADMIN_PASSWORD", "Security@123")
+ADMIN_2FA_SECRET = os.environ.get("ADMIN_2FA_SECRET", "JBSWY3DPEHPK3PXP").strip()
 
 # Must be stable across workers/processes. Random per-worker secrets break sessions on multi-worker hosts.
 SESSION_SECRET = os.environ.get("SESSION_SECRET", "change-me-in-production")
@@ -107,7 +109,7 @@ class AdminGateMiddleware(BaseHTTPMiddleware):
             path.startswith("/dispatch/")
             or path.startswith("/qr/")
             or path.startswith("/static/")
-            or path in ("/admin/login", "/admin/logout", "/healthz")
+            or path in ("/admin/login", "/admin/logout", "/admin/2fa", "/healthz")
         )
 
         if is_public:
@@ -171,6 +173,10 @@ def get_public_base_url(request: Request) -> str:
     Prefer PUBLIC_BASE_URL so QR codes remain correct behind reverse proxies.
     """
     return PUBLIC_BASE_URL or str(request.base_url).rstrip("/")
+
+
+def _normalize_otp(value: str) -> str:
+    return "".join(ch for ch in (value or "") if ch.isdigit())
 
 
 @app.get("/healthz")
@@ -1341,9 +1347,11 @@ def admin_login_submit(
     next: str = Form("/admin/new"),
 ):
     if username == ADMIN_USERNAME and password == ADMIN_PASSWORD:
-        request.session["admin_authenticated"] = True
+        request.session["admin_authenticated"] = False
         request.session["admin_user"] = username
-        return RedirectResponse(url=next or "/admin/new", status_code=303)
+        request.session["admin_2fa_pending"] = True
+        request.session["admin_2fa_next"] = next or "/admin/new"
+        return RedirectResponse(url="/admin/2fa", status_code=303)
 
     return templates.TemplateResponse(
         request,
@@ -1355,6 +1363,48 @@ def admin_login_submit(
         },
         status_code=401,
     )
+
+
+@app.get("/admin/2fa", response_class=HTMLResponse)
+def admin_2fa_page(request: Request):
+    if request.session.get("admin_authenticated") is True:
+        return RedirectResponse(url="/admin/new", status_code=303)
+    if request.session.get("admin_2fa_pending") is not True:
+        return RedirectResponse(url="/admin/login", status_code=303)
+    return templates.TemplateResponse(
+        request,
+        "admin_2fa.html",
+        {"request": request, "error": ""},
+    )
+
+
+@app.post("/admin/2fa")
+def admin_2fa_submit(request: Request, otp_code: str = Form("")):
+    if request.session.get("admin_2fa_pending") is not True:
+        return RedirectResponse(url="/admin/login", status_code=303)
+
+    code = _normalize_otp(otp_code)
+    ok = False
+    try:
+        if ADMIN_2FA_SECRET:
+            totp = pyotp.TOTP(ADMIN_2FA_SECRET)
+            ok = bool(totp.verify(code, valid_window=1))
+    except Exception:
+        ok = False
+
+    if not ok:
+        return templates.TemplateResponse(
+            request,
+            "admin_2fa.html",
+            {"request": request, "error": "Invalid verification code."},
+            status_code=401,
+        )
+
+    next_url = request.session.get("admin_2fa_next") or "/admin/new"
+    request.session["admin_authenticated"] = True
+    request.session["admin_2fa_pending"] = False
+    request.session.pop("admin_2fa_next", None)
+    return RedirectResponse(url=next_url, status_code=303)
 
 
 @app.get("/admin/logout", response_class=HTMLResponse)

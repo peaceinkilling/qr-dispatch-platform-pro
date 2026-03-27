@@ -1370,6 +1370,90 @@ option {
   letter-spacing: -0.02em;
 }
 
+.detail-load-layout {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(260px, 420px);
+  gap: 1rem 1.25rem;
+  align-items: end;
+}
+
+.detail-load-vehicle {
+  position: relative;
+  height: 9.25rem;
+  border-radius: 1rem;
+  background: linear-gradient(160deg, rgba(15, 23, 42, 0.24) 0%, rgba(30, 41, 59, 0.1) 100%);
+  border: 1px solid rgba(148, 163, 184, 0.28);
+  box-shadow:
+    0 1px 0 rgba(255, 255, 255, 0.08) inset,
+    0 10px 24px rgba(2, 6, 23, 0.22);
+  overflow: hidden;
+}
+
+.detail-load-trailer {
+  position: absolute;
+  left: 1.1rem;
+  right: 4.75rem;
+  top: 1.1rem;
+  height: 4.1rem;
+  border-radius: 0.75rem;
+  border: 1px solid rgba(148, 163, 184, 0.32);
+  background: linear-gradient(180deg, rgba(226, 232, 240, 0.2) 0%, rgba(148, 163, 184, 0.12) 100%);
+  overflow: hidden;
+}
+
+.detail-load-trailer-fill {
+  position: absolute;
+  inset: 0 auto 0 0;
+  min-width: 1.15rem;
+  background: linear-gradient(90deg, rgba(59, 130, 246, 0.9) 0%, rgba(236, 72, 153, 0.88) 56%, rgba(248, 113, 113, 0.88) 100%);
+}
+
+.detail-load-percent {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: clamp(1.25rem, 2vw, 1.8rem);
+  font-weight: 800;
+  letter-spacing: -0.03em;
+  color: #f8fafc;
+  text-shadow: 0 2px 8px rgba(2, 6, 23, 0.35);
+}
+
+.detail-load-cabin {
+  position: absolute;
+  right: 1.1rem;
+  top: 1.55rem;
+  width: 3.15rem;
+  height: 2.95rem;
+  border-radius: 0.55rem;
+  border: 1px solid rgba(148, 163, 184, 0.34);
+  background: linear-gradient(180deg, rgba(56, 189, 248, 0.84) 0%, rgba(14, 165, 233, 0.72) 100%);
+}
+
+.detail-load-wheel {
+  position: absolute;
+  bottom: 0.9rem;
+  width: 1.2rem;
+  height: 1.2rem;
+  border-radius: 9999px;
+  background: radial-gradient(circle at 35% 35%, #475569 0%, #0f172a 72%);
+  border: 1px solid rgba(148, 163, 184, 0.4);
+}
+
+.detail-load-wheel--one {
+  left: 2rem;
+}
+
+.detail-load-wheel--two {
+  left: 6rem;
+}
+
+.detail-load-wheel--three {
+  right: 1.7rem;
+}
+
 .detail-panel-muted {
   font-size: 1rem;
   line-height: 1.45;
@@ -2862,5 +2946,81 @@ html.theme-light .eta-badge--soon {
   color: #075985;
   background: #e0f2fe;
   border-color: #bae6fd;
+}
+
+/* ===== Light theme refinement pass (cleaner, calmer, higher shape consistency) ===== */
+html.theme-light body {
+  background: linear-gradient(135deg, #dbe6f2 0%, #e3ebf5 45%, #d7e2ee 100%);
+}
+
+html.theme-light .content,
+html.theme-light .app-shell {
+  max-width: min(1480px, 94vw);
+}
+
+html.theme-light .glass,
+html.theme-light .glass-strong,
+html.theme-light .dispatch-row,
+html.theme-light .detail-panel,
+html.theme-light .stat-tile {
+  border-radius: 20px;
+}
+
+html.theme-light .glass,
+html.theme-light .glass-strong {
+  border-color: rgba(15, 23, 42, 0.12);
+  box-shadow:
+    0 1px 0 rgba(255, 255, 255, 0.9) inset,
+    0 16px 34px rgba(15, 23, 42, 0.12);
+}
+
+html.theme-light .field,
+html.theme-light select.field,
+html.theme-light select {
+  background: #eef3fa !important;
+  border-color: rgba(100, 116, 139, 0.35) !important;
+  border-radius: 14px;
+  min-height: 46px;
+}
+
+html.theme-light .field:focus,
+html.theme-light .field:focus-visible {
+  border-color: rgba(14, 165, 233, 0.72) !important;
+  box-shadow:
+    0 0 0 3px rgba(14, 165, 233, 0.16),
+    0 1px 1px rgba(14, 165, 233, 0.14) inset !important;
+}
+
+html.theme-light .btn {
+  border-radius: 12px;
+  min-height: 42px;
+}
+
+html.theme-light .btn.btn-sm {
+  min-height: 36px;
+}
+
+html.theme-light .dispatch-row .btn {
+  border-radius: 10px;
+}
+
+html.theme-light .detail-load-vehicle {
+  background: linear-gradient(165deg, #e2e8f0 0%, #d4deea 100%);
+  border-color: rgba(51, 65, 85, 0.2);
+}
+
+html.theme-light .detail-load-trailer {
+  background: linear-gradient(180deg, #f8fafc 0%, #e2e8f0 100%);
+  border-color: rgba(100, 116, 139, 0.35);
+}
+
+html.theme-light .detail-load-cabin {
+  background: linear-gradient(180deg, #38bdf8 0%, #0284c7 100%);
+}
+
+@media (max-width: 1024px) {
+  .detail-load-layout {
+    grid-template-columns: 1fr;
+  }
 }
 

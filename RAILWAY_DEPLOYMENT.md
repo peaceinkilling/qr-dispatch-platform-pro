@@ -77,6 +77,7 @@ In Railway service variables, add:
 - `SESSION_SECRET=<long-random-secret>`
 - `ADMIN_USERNAME=cht_mgt`
 - `ADMIN_PASSWORD=Security@123` (or your own password)
+- `ADMIN_2FA_SECRET=<base32-secret-for-authenticator-app>`
 
 ---
 

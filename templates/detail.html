@@ -213,28 +213,31 @@
     </div>
 
     <div class="mt-6 detail-panel detail-pixel-panel glass-strong p-4 sm:p-5 rd-24 max-w-4xl">
-      <div class="detail-panel-label">Unit load</div>
-      <div class="mt-2 flex items-end justify-between gap-3 flex-wrap">
+      <div class="detail-panel-label">Load overview</div>
+      <div class="mt-3 detail-load-layout">
         <div>
           <div class="title detail-load-weight font-bold">{{ item.weight_display }}</div>
           <div class="detail-panel-muted mt-1">
-            Capacity used: {{ item.load_percent }}% of {{ item.capacity_weight_display }}
+            Capacity: {{ item.capacity_weight_display }}
           </div>
         </div>
-        <div class="status-chip status-blue">
-          <span class="h-2 w-2 rounded-full bg-sky-400"></span>
-          <span>{{ item.load_percent }}%</span>
+        <div class="detail-load-vehicle" aria-label="CHT load percentage">
+          <div class="detail-load-cabin"></div>
+          <div class="detail-load-trailer">
+            <div
+              id="loadBarFill"
+              class="detail-load-trailer-fill"
+              style="width: {{ item.load_percent|default(0) }}%"
+            ></div>
+            <div class="detail-load-percent">{{ item.load_percent }}%</div>
+          </div>
+          <div class="detail-load-wheel detail-load-wheel--one"></div>
+          <div class="detail-load-wheel detail-load-wheel--two"></div>
+          <div class="detail-load-wheel detail-load-wheel--three"></div>
         </div>
       </div>
-      <div class="detail-load-track mt-4 h-4 glass p-1 rd-22 overflow-hidden max-w-2xl">
-        <div
-          id="loadBarFill"
-          class="h-full rd-22 bg-gradient-to-r from-sky-400/90 to-emerald-400/85 transition-[width] duration-300"
-          style="width: {{ item.load_percent|default(0) }}%"
-        ></div>
-      </div>
-      <div class="mt-2 detail-panel-muted">
-        Estimated using dispatch total weight vs CHT load capability.
+      <div class="mt-3 detail-panel-muted">
+        Percentage is based on dispatch total weight versus configured CHT load capability.
       </div>
     </div>
   </div>
