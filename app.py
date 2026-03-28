@@ -1075,18 +1075,17 @@ def init_db() -> None:
             {"public_token": "cht-rj06al8808", "vehicle_number": "RJ 06 AL 8808", "destination": "Alwar", "destination_pincode": "301001", "icn_number": "ICN-CTH-224-10011", "driver_name": "Deepak Meena", "driver_mobile": "+91 98765 66666", "package_count": 90, "total_weight_kg": 4050.0, "nature_of_items": "3,4"},
             {"public_token": "cht-rj24ut9909", "vehicle_number": "RJ 24 UT 9909", "destination": "Utarlai", "destination_pincode": "344032", "icn_number": "ICN-CTH-224-10012", "driver_name": "Mohan Lal", "driver_mobile": "+91 98765 88888", "package_count": 80, "total_weight_kg": 3600.0, "nature_of_items": "2,3"},
             {"public_token": "cht-rj14kc9021", "vehicle_number": "RJ 14 KC 9021", "destination": "Ahmedabad", "destination_pincode": "380001", "icn_number": "ICN-CTH-224-10013", "driver_name": "Sanjay Rao", "driver_mobile": "+91 98765 99999", "package_count": 99, "total_weight_kg": 4455.0, "nature_of_items": "1,3,4"},
-            {"public_token": "cht-jk02hp1010", "vehicle_number": "JK 02 HP 1010", "destination": "Happa", "destination_pincode": "181152", "icn_number": "ICN-CTH-224-10014", "driver_name": "Kuldeep Singh", "driver_mobile": "+91 98100 11223", "package_count": 74, "total_weight_kg": 3330.0, "nature_of_items": "1"},
-            {"public_token": "cht-mp09gh3456", "vehicle_number": "MP 09 GH 3456", "destination": "Bhopal", "destination_pincode": "462001", "icn_number": "ICN-CTH-224-10015", "driver_name": "Arvind Saxena", "driver_mobile": "+91 98260 33445", "package_count": 96, "total_weight_kg": 4320.0, "nature_of_items": "1,4"},
-            {"public_token": "cht-gj18gn2020", "vehicle_number": "GJ 18 GN 2020", "destination": "Gandhinagar", "destination_pincode": "382421", "icn_number": "ICN-CTH-224-10016", "driver_name": "Hitesh Modi", "driver_mobile": "+91 98250 55667", "package_count": 81, "total_weight_kg": 3645.0, "nature_of_items": "2,3"},
-            {"public_token": "cht-up76bb3030", "vehicle_number": "UP 76 BB 3030", "destination": "Babina", "destination_pincode": "284501", "icn_number": "ICN-CTH-224-10017", "driver_name": "Ravi Yadav", "driver_mobile": "+91 98370 77889", "package_count": 88, "total_weight_kg": 3960.0, "nature_of_items": "3"},
-            {"public_token": "cht-mp07gw4040", "vehicle_number": "MP 07 GW 4040", "destination": "Gwalior", "destination_pincode": "474001", "icn_number": "ICN-CTH-224-10018", "driver_name": "Pankaj Tomar", "driver_mobile": "+91 97520 99001", "package_count": 93, "total_weight_kg": 4185.0, "nature_of_items": "1,2"},
-            {"public_token": "cht-up93jh5050", "vehicle_number": "UP 93 JH 5050", "destination": "Jhansi", "destination_pincode": "284001", "icn_number": "ICN-CTH-224-10019", "driver_name": "Amit Dubey", "driver_mobile": "+91 94500 22334", "package_count": 85, "total_weight_kg": 3825.0, "nature_of_items": "4"},
-            {"public_token": "cht-rj02kl2468", "vehicle_number": "RJ 02 KL 2468", "destination": "Kota", "destination_pincode": "324001", "icn_number": "ICN-CTH-224-10020", "driver_name": "Lokesh Gurjar", "driver_mobile": "+91 94600 44556", "package_count": 94, "total_weight_kg": 4230.0, "nature_of_items": "3,4"},
-            {"public_token": "cht-rj01ab1234", "vehicle_number": "RJ 01 AB 1234", "destination": "Jaipur", "destination_pincode": "302001", "icn_number": "ICN-CTH-224-10021", "driver_name": "Harish Choudhary", "driver_mobile": "+91 94140 66778", "package_count": 101, "total_weight_kg": 4545.0, "nature_of_items": "1,2,4"},
-            {"public_token": "cht-rj03jd6060", "vehicle_number": "RJ 03 JD 6060", "destination": "Jodhpur", "destination_pincode": "342001", "icn_number": "ICN-CTH-224-10022", "driver_name": "Bhagirath Singh", "driver_mobile": "+91 99280 88990", "package_count": 89, "total_weight_kg": 4005.0, "nature_of_items": "2"},
-            {"public_token": "cht-rj08op8642", "vehicle_number": "RJ 08 OP 8642", "destination": "Bikaner", "destination_pincode": "334001", "icn_number": "ICN-CTH-224-10023", "driver_name": "Om Prakash", "driver_mobile": "+91 98290 10112", "package_count": 77, "total_weight_kg": 3465.0, "nature_of_items": "1,3"},
-            {"public_token": "cht-gj03ef9012", "vehicle_number": "GJ 03 EF 9012", "destination": "Surat", "destination_pincode": "395001", "icn_number": "ICN-CTH-224-10024", "driver_name": "Dinesh Shah", "driver_mobile": "+91 98251 31415", "package_count": 86, "total_weight_kg": 3870.0, "nature_of_items": "3,4"},
-            {"public_token": "cht-mp11in1616", "vehicle_number": "MP 11 IN 1616", "destination": "Indore", "destination_pincode": "452001", "icn_number": "ICN-CTH-224-10025", "driver_name": "Manish Joshi", "driver_mobile": "+91 93000 16171", "package_count": 91, "total_weight_kg": 4095.0, "nature_of_items": "1,2,3"},
+            {"public_token": "cht-mp09gh3456", "vehicle_number": "MP 09 GH 3456", "destination": "Bhopal", "destination_pincode": "462001", "icn_number": "ICN-CTH-224-10014", "driver_name": "Arvind Saxena", "driver_mobile": "+91 98260 33445", "package_count": 96, "total_weight_kg": 4320.0, "nature_of_items": "1,4"},
+            {"public_token": "cht-gj18gn2020", "vehicle_number": "GJ 18 GN 2020", "destination": "Gandhinagar", "destination_pincode": "382421", "icn_number": "ICN-CTH-224-10015", "driver_name": "Hitesh Modi", "driver_mobile": "+91 98250 55667", "package_count": 81, "total_weight_kg": 3645.0, "nature_of_items": "2,3"},
+            {"public_token": "cht-up76bb3030", "vehicle_number": "UP 76 BB 3030", "destination": "Babina", "destination_pincode": "284501", "icn_number": "ICN-CTH-224-10016", "driver_name": "Ravi Yadav", "driver_mobile": "+91 98370 77889", "package_count": 88, "total_weight_kg": 3960.0, "nature_of_items": "3"},
+            {"public_token": "cht-mp07gw4040", "vehicle_number": "MP 07 GW 4040", "destination": "Gwalior", "destination_pincode": "474001", "icn_number": "ICN-CTH-224-10017", "driver_name": "Pankaj Tomar", "driver_mobile": "+91 97520 99001", "package_count": 93, "total_weight_kg": 4185.0, "nature_of_items": "1,2"},
+            {"public_token": "cht-up93jh5050", "vehicle_number": "UP 93 JH 5050", "destination": "Jhansi", "destination_pincode": "284001", "icn_number": "ICN-CTH-224-10018", "driver_name": "Amit Dubey", "driver_mobile": "+91 94500 22334", "package_count": 85, "total_weight_kg": 3825.0, "nature_of_items": "4"},
+            {"public_token": "cht-rj02kl2468", "vehicle_number": "RJ 02 KL 2468", "destination": "Kota", "destination_pincode": "324001", "icn_number": "ICN-CTH-224-10019", "driver_name": "Lokesh Gurjar", "driver_mobile": "+91 94600 44556", "package_count": 94, "total_weight_kg": 4230.0, "nature_of_items": "3,4"},
+            {"public_token": "cht-rj01ab1234", "vehicle_number": "RJ 01 AB 1234", "destination": "Jaipur", "destination_pincode": "302001", "icn_number": "ICN-CTH-224-10020", "driver_name": "Harish Choudhary", "driver_mobile": "+91 94140 66778", "package_count": 101, "total_weight_kg": 4545.0, "nature_of_items": "1,2,4"},
+            {"public_token": "cht-rj03jd6060", "vehicle_number": "RJ 03 JD 6060", "destination": "Jodhpur", "destination_pincode": "342001", "icn_number": "ICN-CTH-224-10021", "driver_name": "Bhagirath Singh", "driver_mobile": "+91 99280 88990", "package_count": 89, "total_weight_kg": 4005.0, "nature_of_items": "2"},
+            {"public_token": "cht-rj08op8642", "vehicle_number": "RJ 08 OP 8642", "destination": "Bikaner", "destination_pincode": "334001", "icn_number": "ICN-CTH-224-10022", "driver_name": "Om Prakash", "driver_mobile": "+91 98290 10112", "package_count": 77, "total_weight_kg": 3465.0, "nature_of_items": "1,3"},
+            {"public_token": "cht-gj03ef9012", "vehicle_number": "GJ 03 EF 9012", "destination": "Surat", "destination_pincode": "395001", "icn_number": "ICN-CTH-224-10023", "driver_name": "Dinesh Shah", "driver_mobile": "+91 98251 31415", "package_count": 86, "total_weight_kg": 3870.0, "nature_of_items": "3,4"},
+            {"public_token": "cht-mp11in1616", "vehicle_number": "MP 11 IN 1616", "destination": "Indore", "destination_pincode": "452001", "icn_number": "ICN-CTH-224-10024", "driver_name": "Manish Joshi", "driver_mobile": "+91 93000 16171", "package_count": 91, "total_weight_kg": 4095.0, "nature_of_items": "1,2,3"},
         ]
         rng = random.Random(datetime.utcnow().date().isoformat())
         n_demo = len(demo_seed_base)
@@ -1228,6 +1227,7 @@ def init_db() -> None:
                         dispatch_date = ?,
                         eta_date = ?,
                         status = ?,
+                        icn_number = ?,
                         updated_at = ?
                     WHERE vehicle_number = ?
                     """,
@@ -1237,6 +1237,7 @@ def init_db() -> None:
                         s["dispatch_date"],
                         s["eta"],
                         s["status"],
+                        s["icn_number"],
                         datetime.utcnow().isoformat(timespec="seconds"),
                         s["vehicle_number"],
                     ),
@@ -1262,7 +1263,6 @@ def init_db() -> None:
                     WHEN 'RJ 06 AL 8808' THEN 'Alwar'
                     WHEN 'RJ 24 UT 9909' THEN 'Utarlai'
                     WHEN 'RJ 14 KC 9021' THEN 'Ahmedabad'
-                    WHEN 'JK 02 HP 1010' THEN 'Happa'
                     WHEN 'MP 09 GH 3456' THEN 'Bhopal'
                     WHEN 'GJ 18 GN 2020' THEN 'Gandhinagar'
                     WHEN 'UP 76 BB 3030' THEN 'Babina'
@@ -1290,7 +1290,6 @@ def init_db() -> None:
                     WHEN 'RJ 06 AL 8808' THEN '301001'
                     WHEN 'RJ 24 UT 9909' THEN '344032'
                     WHEN 'RJ 14 KC 9021' THEN '380001'
-                    WHEN 'JK 02 HP 1010' THEN '181152'
                     WHEN 'MP 09 GH 3456' THEN '462001'
                     WHEN 'GJ 18 GN 2020' THEN '382421'
                     WHEN 'UP 76 BB 3030' THEN '284501'
@@ -1325,6 +1324,10 @@ def init_db() -> None:
             WHERE vehicle_number IN ({demo_vehicle_list})
               AND (nature_of_items IS NULL OR TRIM(nature_of_items) = '')
             """
+        )
+        conn.execute(
+            f"DELETE FROM {DISPATCH_TABLE} WHERE vehicle_number = ?",
+            ("JK 02 HP 1010",),
         )
         conn.commit()
 
