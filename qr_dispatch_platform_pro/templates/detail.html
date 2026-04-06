@@ -312,7 +312,7 @@
       <div id="detailMapFullscreen" class="absolute inset-0 z-[2]"></div>
     </div>
     <div class="muted2 text-sm mt-2 shrink-0">
-      <strong>Street</strong> = OpenStreetMap · <strong>Terrain</strong> = Esri World Topo · <strong>Satellite</strong> = Esri imagery · <strong>Road</strong> = CARTO Voyager.
+      <strong>Street</strong> = CARTO light (OSM) · <strong>Terrain</strong> = Esri World Topo · <strong>Satellite</strong> = Esri imagery · <strong>Road</strong> = CARTO Voyager.
     </div>
   </div>
 
@@ -440,8 +440,7 @@
         });
       }
 
-      if (!openBtn || !backdrop || !img) return;
-
+      // Do not bail out before map init: the location map must run even if QR modal nodes are missing.
       function createBasemapLayer(key) {
         switch (key) {
           case "terrain":
@@ -473,10 +472,16 @@
             );
           case "streets":
           default:
-            return L.tileLayer("https://tile.openstreetmap.org/{z}/{x}/{y}.png", {
-              maxZoom: 19,
-              attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>',
-            });
+            // CARTO light (OSM data) — more reliable on hosts where direct OSM tile fetches are throttled/blocked.
+            return L.tileLayer(
+              "https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png",
+              {
+                maxZoom: 20,
+                subdomains: "abcd",
+                attribution:
+                  '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> &copy; <a href="https://carto.com/">CARTO</a>',
+              }
+            );
         }
       }
 
@@ -724,6 +729,7 @@
       }
 
       function openQrModal() {
+        if (!openBtn || !backdrop || !img) return;
         const qrUrl = openBtn.getAttribute("data-qr");
         img.src = qrUrl;
         const root = document.getElementById("detailRoot");
@@ -742,6 +748,7 @@
       }
 
       function closeQrModal() {
+        if (!backdrop || !img) return;
         backdrop.classList.add("hidden");
         backdrop.classList.remove("flex");
         img.src = "";
@@ -760,16 +767,18 @@
           if (interactive) return;
           if (e.target.closest(".detail-qr-tile")) return;
           if (e.target.closest("#locationMapWrap") || e.target.closest("#detailMapModal")) return;
+          if (!openBtn || !backdrop || !img) return;
           openQrModal();
         });
       }
 
-      openBtn.addEventListener("click", openQrModal);
-      if (closeBtn) closeBtn.addEventListener("click", closeQrModal);
-
-      backdrop.addEventListener("click", (e) => {
-        if (e.target === backdrop) closeQrModal();
-      });
+      if (openBtn && backdrop && img) {
+        openBtn.addEventListener("click", openQrModal);
+        if (closeBtn) closeBtn.addEventListener("click", closeQrModal);
+        backdrop.addEventListener("click", (e) => {
+          if (e.target === backdrop) closeQrModal();
+        });
+      }
     })();
   </script>
 {% endblock %}

@@ -28,14 +28,18 @@
       };
     </script>
 
-    <!-- Leaflet (used for the public location map) -->
+    <!-- Leaflet (public dispatch map) — jsDelivr tends to be more reliable than unpkg on some networks -->
     <link
       rel="stylesheet"
-      href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"
+      href="https://cdn.jsdelivr.net/npm/leaflet@1.9.4/dist/leaflet.css"
+      crossorigin="anonymous"
     />
-    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+    <script
+      src="https://cdn.jsdelivr.net/npm/leaflet@1.9.4/dist/leaflet.js"
+      crossorigin="anonymous"
+    ></script>
 
-    <link rel="stylesheet" href="/static/styles.css?v=20260328b" />
+    <link rel="stylesheet" href="/static/styles.css?v=20260328c" />
 
     {% block extra_head %}{% endblock %}
     <title>{% block title %}Dispatch QR Platform{% endblock %}</title>
