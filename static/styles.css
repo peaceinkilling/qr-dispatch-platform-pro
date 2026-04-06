@@ -2273,31 +2273,27 @@ html.theme-light .qr-modal-img {
   box-shadow: 0 16px 48px rgba(15, 23, 42, 0.12);
 }
 
-/* ========== Light theme (Replicate-inspired: white canvas, blaze mesh, ink borders) ========== */
+/* ========== Light theme — premium: vivid blaze mesh, ink UI, layered depth ========== */
 html.theme-light {
   color-scheme: light;
-  --light-ink: #202020;
-  --light-ink-soft: #4e4e4e;
-  --light-muted: #646464;
-  --light-border: rgba(32, 32, 32, 0.12);
-  --light-edge: rgba(255, 255, 255, 0.72);
+  --light-ink: #18181b;
+  --light-ink-soft: #3f3f46;
+  --light-muted: #52525b;
+  --light-border: rgba(24, 24, 27, 0.1);
+  --light-edge: rgba(255, 255, 255, 0.85);
   --light-accent: #ea2804;
-  --light-surface: linear-gradient(
-    155deg,
-    #ffffff 0%,
-    #fcfcfc 45%,
-    #fffaf8 100%
-  );
-  --light-surface-2: linear-gradient(
-    160deg,
-    #ffffff 0%,
-    #fff5f3 50%,
-    #ffffff 100%
-  );
+  --light-blaze: linear-gradient(135deg, #ea2804 0%, #e11d48 40%, #c026d3 72%, #7c3aed 100%);
+  --light-surface: linear-gradient(160deg, #ffffff 0%, #fffbfb 50%, #ffffff 100%);
+  --light-surface-2: linear-gradient(168deg, #ffffff 0%, #fff7f5 42%, #fefce8 100%);
+  --light-shadow-premium:
+    0 1px 0 rgba(255, 255, 255, 0.95) inset,
+    0 2px 4px rgba(15, 23, 42, 0.04),
+    0 20px 50px -12px rgba(15, 23, 42, 0.12),
+    0 0 0 1px rgba(234, 40, 4, 0.06);
 }
 
 html.theme-light body {
-  background: #ffffff;
+  background: linear-gradient(180deg, #fffdfb 0%, #f8fafc 38%, #fff5f3 100%);
   color: var(--light-ink);
   font-size: 1.0625rem;
   line-height: 1.56;
@@ -2307,14 +2303,14 @@ html.theme-light body {
 html.theme-light .page-bg::before {
   animation: none;
   opacity: 1;
-  /* “Hero blaze” — vivid orange → red → magenta on a clean white field (replicate/DESIGN.md) */
+  /* Saturated “festival poster” blooms + clean white core (replicate/DESIGN.md) */
   background:
-    radial-gradient(ellipse 90% 55% at 0% -10%, rgba(234, 40, 4, 0.2), transparent 52%),
-    radial-gradient(ellipse 85% 50% at 100% 0%, rgba(225, 29, 72, 0.16), transparent 50%),
-    radial-gradient(ellipse 75% 45% at 85% 85%, rgba(219, 39, 119, 0.12), transparent 48%),
-    radial-gradient(ellipse 55% 40% at 15% 95%, rgba(244, 114, 182, 0.1), transparent 50%),
-    radial-gradient(ellipse 50% 35% at 50% 45%, rgba(251, 146, 60, 0.06), transparent 55%),
-    linear-gradient(178deg, #fff5f3 0%, #ffffff 22%, #fffefb 55%, #ffffff 100%);
+    radial-gradient(ellipse 100% 70% at -5% -15%, rgba(234, 40, 4, 0.28), transparent 55%),
+    radial-gradient(ellipse 90% 65% at 105% -5%, rgba(219, 39, 119, 0.22), transparent 52%),
+    radial-gradient(ellipse 80% 55% at 95% 100%, rgba(124, 58, 237, 0.14), transparent 50%),
+    radial-gradient(ellipse 70% 50% at 8% 95%, rgba(251, 146, 60, 0.16), transparent 48%),
+    radial-gradient(ellipse 60% 45% at 50% 40%, rgba(244, 114, 182, 0.08), transparent 58%),
+    linear-gradient(185deg, #fff7f5 0%, #ffffff 28%, #fafafa 55%, #fffdfb 100%);
 }
 
 /* Fine grain — very subtle on white */
@@ -2355,18 +2351,18 @@ html.theme-light .app-brand-hero::after {
 
 html.theme-light .app-brand-hero {
   background: linear-gradient(
-    168deg,
-    rgba(255, 237, 233, 0.65) 0%,
-    #ffffff 28%,
-    #ffffff 100%
+    145deg,
+    rgba(255, 247, 245, 0.95) 0%,
+    #ffffff 35%,
+    rgba(254, 252, 255, 0.98) 100%
   );
   background-color: #ffffff;
-  border: 1px solid rgba(32, 32, 32, 0.14);
+  border: 1px solid rgba(24, 24, 27, 0.1);
   box-shadow:
     0 1px 0 rgba(255, 255, 255, 1) inset,
-    0 0 0 1px rgba(234, 40, 4, 0.07),
-    0 18px 48px rgba(234, 40, 4, 0.07),
-    0 28px 72px rgba(15, 23, 42, 0.06);
+    0 0 0 1px rgba(234, 40, 4, 0.1),
+    0 4px 16px rgba(234, 40, 4, 0.08),
+    0 28px 80px rgba(15, 23, 42, 0.08);
   overflow: hidden;
   padding: 1.35rem 1.4rem 1.45rem;
   margin-bottom: 1.5rem;
@@ -2407,21 +2403,19 @@ html.theme-light .glass,
 html.theme-light .glass-strong {
   background: var(--light-surface);
   background-color: #ffffff;
-  border: 1px solid rgba(32, 32, 32, 0.12);
-  box-shadow:
-    0 1px 0 rgba(255, 255, 255, 0.95) inset,
-    0 16px 48px rgba(15, 23, 42, 0.06),
-    0 0 0 1px rgba(234, 40, 4, 0.04);
+  border: 1px solid rgba(24, 24, 27, 0.09);
+  box-shadow: var(--light-shadow-premium);
 }
 
 html.theme-light .glass-strong {
-  background: #ffffff;
+  background: linear-gradient(165deg, #ffffff 0%, #fffcfc 45%, #ffffff 100%);
   background-color: #ffffff;
-  border: 1px solid rgba(32, 32, 32, 0.12);
+  border: 1px solid rgba(24, 24, 27, 0.1);
   box-shadow:
     0 1px 0 rgba(255, 255, 255, 1) inset,
-    0 20px 56px rgba(234, 40, 4, 0.05),
-    0 28px 64px rgba(15, 23, 42, 0.05);
+    0 2px 8px rgba(234, 40, 4, 0.06),
+    0 24px 60px rgba(15, 23, 42, 0.1),
+    0 0 0 1px rgba(234, 40, 4, 0.07);
 }
 
 html.theme-light .muted,
@@ -2709,15 +2703,16 @@ html.theme-light .app-toast .muted {
 html.theme-light .dispatch-row {
   background: linear-gradient(
     168deg,
-    rgba(240, 249, 255, 0.98) 0%,
-    rgba(224, 242, 252, 0.96) 38%,
-    rgba(232, 246, 255, 0.97) 100%
+    rgba(255, 251, 248, 0.98) 0%,
+    rgba(255, 243, 237, 0.95) 42%,
+    rgba(254, 252, 251, 0.99) 100%
   );
-  border-top-color: rgba(125, 211, 252, 0.35);
+  border-top-color: rgba(234, 88, 12, 0.22);
   border-bottom-color: rgba(15, 23, 42, 0.06);
   box-shadow:
-    0 1px 0 rgba(255, 255, 255, 0.75) inset,
-    0 16px 44px rgba(15, 23, 42, 0.12);
+    0 1px 0 rgba(255, 255, 255, 0.85) inset,
+    0 0 0 1px rgba(234, 40, 4, 0.05),
+    0 18px 48px rgba(15, 23, 42, 0.09);
 }
 
 html.theme-light .dispatch-row .muted,
@@ -2824,11 +2819,13 @@ html.theme-light .dispatch-row--ocean .cht-card-vehicle {
 html.theme-light .dispatch-row .glass {
   background: linear-gradient(
     155deg,
-    rgba(248, 252, 255, 0.96) 0%,
-    rgba(230, 242, 252, 0.92) 100%
+    rgba(255, 255, 255, 0.98) 0%,
+    rgba(255, 247, 243, 0.94) 100%
   ) !important;
-  border-color: rgba(125, 211, 252, 0.28) !important;
-  box-shadow: 0 1px 0 rgba(255, 255, 255, 0.8) inset !important;
+  border-color: rgba(234, 88, 12, 0.14) !important;
+  box-shadow:
+    0 1px 0 rgba(255, 255, 255, 0.95) inset,
+    0 8px 24px rgba(234, 40, 4, 0.04) !important;
 }
 
 html.theme-light .dispatch-row .status-chip {
@@ -2877,16 +2874,10 @@ html.theme-light .leaflet-control-zoom a {
 }
 
 /* Detail / public page — base type (surfaces: see .detail-pixel-scope block below) */
-html.theme-light .detail-pixel-page-title--brand {
-  background: none;
-  -webkit-text-fill-color: unset;
-  color: #0c4a6e !important;
-  -webkit-background-clip: unset;
-  background-clip: unset;
-}
-
 html.theme-light .detail-pixel-kicker {
-  color: #0369a1 !important;
+  color: #c2410c !important;
+  font-weight: 600;
+  letter-spacing: 0.08em;
 }
 
 html.theme-light .detail-pixel-vehicle--wave,
@@ -2978,12 +2969,12 @@ html.theme-light .detail-stat-sub {
 /* QR modal shell in light */
 html.theme-light #qrModalBackdrop .glass-strong {
   background: var(--light-surface-2);
-  background-color: #a8bdda;
-  border-color: rgba(56, 189, 248, 0.22);
+  background-color: #ffffff;
+  border-color: rgba(234, 40, 4, 0.14);
   box-shadow:
-    0 1px 0 rgba(255, 255, 255, 0.4) inset,
-    0 28px 72px rgba(15, 23, 42, 0.14),
-    0 0 100px rgba(56, 189, 248, 0.1);
+    0 1px 0 rgba(255, 255, 255, 0.95) inset,
+    0 28px 72px rgba(15, 23, 42, 0.12),
+    0 0 0 1px rgba(234, 40, 4, 0.06);
 }
 
 html.theme-light #qrModalBackdrop .title {
@@ -2992,12 +2983,10 @@ html.theme-light #qrModalBackdrop .title {
 }
 
 html.theme-light .filter-panel {
-  border-color: rgba(32, 32, 32, 0.1);
-  background: #ffffff;
+  border-color: rgba(24, 24, 27, 0.09);
+  background: linear-gradient(165deg, #ffffff 0%, #fffdfb 100%);
   background-color: #ffffff;
-  box-shadow:
-    0 1px 0 rgba(255, 255, 255, 0.75) inset,
-    0 20px 52px rgba(15, 23, 42, 0.08);
+  box-shadow: var(--light-shadow-premium);
 }
 
 /* ========== Light: public dispatch — clean white + Replicate blaze accents ========== */
@@ -3068,10 +3057,8 @@ html.theme-light .detail-pixel-scope .glass,
 html.theme-light .detail-pixel-scope .glass-strong {
   background: #ffffff;
   background-color: #ffffff;
-  border: 1px solid rgba(32, 32, 32, 0.1);
-  box-shadow:
-    0 1px 0 rgba(255, 255, 255, 1) inset,
-    0 16px 44px rgba(15, 23, 42, 0.06);
+  border: 1px solid rgba(24, 24, 27, 0.09);
+  box-shadow: var(--light-shadow-premium);
 }
 
 html.theme-light .detail-pixel-scope .detail-panel.detail-pixel-panel.glass-strong {
@@ -3140,7 +3127,7 @@ html.theme-light .detail-pixel-scope .detail-stat-eta {
 }
 
 html.theme-light .detail-pixel-scope .detail-stat-sub {
-  color: rgba(226, 232, 240, 0.82) !important;
+  color: #64748b !important;
 }
 
 html.theme-light .detail-pixel-scope .detail-load-track {
@@ -3152,11 +3139,18 @@ html.theme-light .detail-pixel-scope .detail-load-track {
 html.theme-light .detail-qr-aside {
   padding: 1.15rem 1.05rem;
   border-radius: 1.35rem;
-  background: linear-gradient(155deg, #818cf8 0%, #60a5fa 42%, #38bdf8 100%);
-  border: 1px solid rgba(59, 130, 246, 0.45);
+  background: linear-gradient(
+    155deg,
+    #fffefb 0%,
+    #fff7f5 38%,
+    #fef3f2 100%
+  );
+  border: 1px solid rgba(234, 40, 4, 0.18);
   box-shadow:
-    0 1px 0 rgba(255, 255, 255, 0.28) inset,
-    0 18px 44px rgba(30, 58, 138, 0.22);
+    0 1px 0 rgba(255, 255, 255, 1) inset,
+    0 0 0 1px rgba(225, 29, 72, 0.06),
+    0 20px 50px rgba(15, 23, 42, 0.08),
+    0 4px 20px rgba(234, 40, 4, 0.06);
 }
 
 html.theme-light .detail-pixel-scope .detail-qr-copy-text {
@@ -3164,11 +3158,12 @@ html.theme-light .detail-pixel-scope .detail-qr-copy-text {
 }
 
 html.theme-light .detail-pixel-scope .detail-qr-tile {
-  background: linear-gradient(155deg, #475569 0%, #334155 48%, #1e293b 100%);
-  border: 1px solid rgba(56, 189, 248, 0.45);
+  background: linear-gradient(165deg, #ffffff 0%, #fafafa 55%, #f4f4f5 100%);
+  border: 1px solid rgba(24, 24, 27, 0.1);
   box-shadow:
-    0 0 0 1px rgba(0, 0, 0, 0.2) inset,
-    0 22px 50px rgba(15, 23, 42, 0.35);
+    0 1px 0 rgba(255, 255, 255, 1) inset,
+    0 0 0 1px rgba(234, 40, 4, 0.06),
+    0 16px 40px rgba(15, 23, 42, 0.1);
 }
 
 html.theme-light .detail-pixel-scope .detail-qr-img {
@@ -3179,50 +3174,59 @@ html.theme-light .detail-pixel-scope .detail-qr-img {
 }
 
 html.theme-light .detail-pixel-scope .detail-qr-caption {
-  color: #e2e8f0 !important;
+  color: #52525b !important;
 }
 
 html.theme-light .detail-pixel-scope #locationMapWrap.detail-map-frame {
-  border-color: rgba(56, 189, 248, 0.5) !important;
-  background: linear-gradient(180deg, #0f172a 0%, #1e293b 100%) !important;
+  border-color: rgba(234, 88, 12, 0.28) !important;
+  background: linear-gradient(180deg, #f1f5f9 0%, #e2e8f0 100%) !important;
   box-shadow:
-    0 0 0 1px rgba(56, 189, 248, 0.12) inset,
-    0 18px 48px rgba(0, 0, 0, 0.35);
+    0 0 0 1px rgba(255, 255, 255, 0.6) inset,
+    0 18px 44px rgba(15, 23, 42, 0.1),
+    0 0 0 1px rgba(234, 40, 4, 0.05);
 }
 
 html.theme-light .location-map-fallback {
-  background-color: #1e293b !important;
+  background: linear-gradient(165deg, #f8fafc 0%, #e2e8f0 100%) !important;
+  color: #334155;
 }
 
 html.theme-light .detail-pixel-scope .map-basemap-bar-label {
-  color: rgba(241, 245, 249, 0.88);
+  color: rgba(51, 65, 85, 0.92);
 }
 
 html.theme-light .detail-pixel-scope .map-basemap-btn {
-  background: linear-gradient(180deg, rgba(71, 85, 105, 0.98) 0%, rgba(51, 65, 85, 0.99) 100%);
-  border-color: rgba(56, 189, 248, 0.3);
-  color: #e2e8f0;
-  box-shadow: 0 1px 0 rgba(255, 255, 255, 0.08) inset;
+  background: linear-gradient(180deg, #ffffff 0%, #f8fafc 100%);
+  border-color: rgba(24, 24, 27, 0.12);
+  color: #334155;
+  box-shadow: 0 1px 0 rgba(255, 255, 255, 1) inset;
 }
 
 html.theme-light .detail-pixel-scope .map-basemap-btn:hover {
-  border-color: rgba(125, 211, 252, 0.55);
-  background: linear-gradient(180deg, #64748b 0%, #475569 100%);
-  color: #ffffff;
+  border-color: rgba(234, 88, 12, 0.35);
+  background: linear-gradient(180deg, #fffdfb 0%, #fff7ed 100%);
+  color: #0f172a;
 }
 
 html.theme-light .detail-pixel-scope .map-basemap-btn.is-active {
-  border-color: rgba(56, 189, 248, 0.65);
-  background: linear-gradient(180deg, rgba(56, 189, 248, 0.4) 0%, rgba(12, 74, 110, 0.96) 100%);
-  color: #f0f9ff;
-  box-shadow: 0 4px 16px rgba(14, 165, 233, 0.28);
+  border-color: rgba(234, 40, 4, 0.45);
+  background: linear-gradient(180deg, #ea580c 0%, #ea2804 100%);
+  color: #fff7ed;
+  box-shadow:
+    0 1px 0 rgba(255, 255, 255, 0.25) inset,
+    0 4px 16px rgba(234, 40, 4, 0.28);
 }
 
 html.theme-light .detail-pixel-footnote {
   padding: 1rem 0.75rem;
   border-radius: 16px;
-  background: linear-gradient(95deg, rgba(165, 180, 252, 0.35) 0%, rgba(186, 230, 253, 0.2) 45%, transparent 100%);
-  border: 1px solid rgba(56, 189, 248, 0.12);
+  background: linear-gradient(
+    95deg,
+    rgba(254, 243, 199, 0.45) 0%,
+    rgba(254, 226, 226, 0.35) 50%,
+    transparent 100%
+  );
+  border: 1px solid rgba(234, 88, 12, 0.14);
 }
 
 html.theme-light .detail-pixel-scope .status-chip.status-blue {
@@ -3233,7 +3237,7 @@ html.theme-light .detail-pixel-scope .status-chip.status-blue {
 }
 
 html.theme-light .detail-pixel-scope .detail-meta-cell:hover {
-  border-color: rgba(56, 189, 248, 0.35);
+  border-color: rgba(234, 40, 4, 0.22);
 }
 
 html.theme-light .eta-badge--overdue {

@@ -1,7 +1,9 @@
 
 from __future__ import annotations
 
+import functools
 import io
+import json
 import random
 import secrets
 import sqlite3
@@ -11,7 +13,7 @@ from contextlib import closing
 import csv
 from datetime import datetime, timedelta, time
 from pathlib import Path
-from typing import Optional
+from typing import Any, Optional
 from email.message import EmailMessage
 
 NATURE_ROMAN = {"1": "I", "2": "II", "3": "III", "4": "IV"}
@@ -74,6 +76,9 @@ def _resolve_writable_db_path() -> Path:
         return fallback
 
 PUBLIC_BASE_URL = os.environ.get("PUBLIC_BASE_URL", "").strip().rstrip("/")
+# OpenStreetMap-based driving routes (OSRM). Set OSRM_ROUTING=false to use straight-line distance only.
+OSRM_ROUTING_ENABLED = os.environ.get("OSRM_ROUTING", "true").strip().lower() in ("1", "true", "yes", "on")
+OSRM_BASE_URL = os.environ.get("OSRM_BASE_URL", "https://router.project-osrm.org").strip().rstrip("/")
 DISPATCH_TABLE = "dispatches"
 LOCATIONS_TABLE = "locations"
 PIN_CODES_TABLE = "pincodes"
@@ -83,6 +88,13 @@ TRUSTED_ADMIN_DEVICES_TABLE = "trusted_admin_devices"
 app = FastAPI(title="Dispatch QR Platform", version="3.0")
 app.mount("/static", StaticFiles(directory=str(BASE_DIR / "static")), name="static")
 templates = Jinja2Templates(directory=str(BASE_DIR / "templates"))
+
+
+def _jinja_tojson(value: Any) -> str:
+    return json.dumps(value, ensure_ascii=False)
+
+
+templates.env.filters["tojson"] = _jinja_tojson
 
 # ---- Admin authentication (simple session cookie) ----
 ADMIN_USERNAME = os.environ.get("ADMIN_USERNAME", "cht_mgt")
@@ -698,6 +710,75 @@ def haversine_km(lat1: float, lng1: float, lat2: float, lng2: float) -> float:
     return R * c
 
 
+@functools.lru_cache(maxsize=768)
+def _osrm_driving_route_cached(key: tuple[float, float, float, float]) -> Optional[tuple[float, tuple[tuple[float, float], ...]]]:
+    """
+    Call OSRM once per rounded depot/destination pair (process-local LRU).
+    Returns (distance_km, ((lat,lng), ...)) or None if routing fails.
+    """
+    if not OSRM_ROUTING_ENABLED:
+        return None
+    import urllib.error
+    import urllib.request
+
+    lat1, lng1, lat2, lng2 = key
+    url = (
+        f"{OSRM_BASE_URL}/route/v1/driving/"
+        f"{lng1},{lat1};{lng2},{lat2}"
+        f"?overview=full&geometries=geojson&steps=false"
+    )
+    req = urllib.request.Request(
+        url,
+        headers={"User-Agent": "DispatchQR/1.0 (OSRM driving route; openstreetmap.org data)"},
+        method="GET",
+    )
+    try:
+        with urllib.request.urlopen(req, timeout=10) as resp:
+            body = json.loads(resp.read().decode("utf-8", "ignore"))
+    except (OSError, ValueError, urllib.error.URLError, json.JSONDecodeError):
+        return None
+    if body.get("code") != "Ok" or not body.get("routes"):
+        return None
+    r0 = body["routes"][0]
+    dist_m = float(r0.get("distance") or 0.0)
+    geom = r0.get("geometry") or {}
+    coords = geom.get("coordinates") or []
+    if dist_m <= 0 or len(coords) < 2:
+        return None
+    # GeoJSON is [lng, lat]; Leaflet wants [lat, lng]
+    latlngs: list[tuple[float, float]] = []
+    for c in coords:
+        if not isinstance(c, (list, tuple)) or len(c) < 2:
+            continue
+        lng_a, lat_a = float(c[0]), float(c[1])
+        latlngs.append((lat_a, lng_a))
+    if len(latlngs) < 2:
+        return None
+    return (dist_m / 1000.0, tuple(latlngs))
+
+
+def osrm_driving_route(
+    lat1: float, lng1: float, lat2: float, lng2: float
+) -> Optional[dict[str, Any]]:
+    """
+    Driving distance and path along roads (OSRM / OpenStreetMap), or None on failure.
+    """
+    k = (
+        round(lat1, 4),
+        round(lng1, 4),
+        round(lat2, 4),
+        round(lng2, 4),
+    )
+    got = _osrm_driving_route_cached(k)
+    if not got:
+        return None
+    dist_km, pts = got
+    return {
+        "distance_km": dist_km,
+        "latlngs": [[lat, lng] for lat, lng in pts],
+    }
+
+
 def get_conn() -> sqlite3.Connection:
     conn = sqlite3.connect(DB_PATH)
     conn.row_factory = sqlite3.Row
@@ -800,7 +881,7 @@ def normalize_mobile(value: str) -> str:
     return "".join(ch for ch in (value or "") if ch.isdigit())
 
 
-def hydrate_row(row: sqlite3.Row, *, public: bool) -> dict:
+def hydrate_row(row: sqlite3.Row, *, public: bool, fetch_road_route: bool = False) -> dict:
     item = dict(row)
     raw_status = (item.get("status") or "").strip()
     effective_status = raw_status
@@ -881,22 +962,38 @@ def hydrate_row(row: sqlite3.Row, *, public: bool) -> dict:
             item["station_lng"] = None
     item["to_display"] = item.get("station_district") or item.get("destination") or "—"
 
+    item["route_latlngs"] = None
+    item["distance_mode"] = "none"
+
     if item.get("station_lat") is not None and item.get("station_lng") is not None:
         item["station_coords_display"] = f"{item['station_lat']:.4f}, {item['station_lng']:.4f}"
-        try:
-            dist = haversine_km(
-                DEPOT_LAT,
-                DEPOT_LNG,
-                float(item["station_lat"]),
-                float(item["station_lng"]),
-            )
-            item["distance_km"] = dist
-            item["distance_display"] = f"~{dist:.0f} km"
-        except Exception:
-            item["distance_display"] = ""
+        slat = float(item["station_lat"])
+        slng = float(item["station_lng"])
+        road: Optional[dict[str, Any]] = None
+        if fetch_road_route:
+            try:
+                road = osrm_driving_route(DEPOT_LAT, DEPOT_LNG, slat, slng)
+            except Exception:
+                road = None
+        if road:
+            item["distance_km"] = road["distance_km"]
+            item["distance_display"] = f"{road['distance_km']:.0f} km"
+            item["distance_mode"] = "road"
+            item["route_latlngs"] = road.get("latlngs")
+        else:
+            try:
+                dist = haversine_km(DEPOT_LAT, DEPOT_LNG, slat, slng)
+                item["distance_km"] = dist
+                item["distance_display"] = f"~{dist:.0f} km"
+                item["distance_mode"] = "air"
+            except Exception:
+                item["distance_display"] = ""
+                item["distance_km"] = None
+                item["distance_mode"] = "none"
     else:
         item["station_coords_display"] = ""
         item["distance_display"] = ""
+        item["distance_km"] = None
     return item
 
 
@@ -1858,7 +1955,7 @@ def dispatch_detail(request: Request, token: str):
         ).fetchone()
     if not row:
         raise HTTPException(status_code=404, detail="Dispatch not found")
-    item = hydrate_row(row, public=True)
+    item = hydrate_row(row, public=True, fetch_road_route=True)
     base = get_public_base_url(request)
     qr_url = base + f"/qr/{token}.png"
     share_url = base + f"/dispatch/{token}"
@@ -2159,7 +2256,7 @@ def share_page(request: Request, token: str):
         ).fetchone()
     if not row:
         raise HTTPException(status_code=404, detail="Dispatch not found")
-    item = hydrate_row(row, public=True)
+    item = hydrate_row(row, public=True, fetch_road_route=True)
     share_url = get_public_base_url(request) + f"/dispatch/{token}"
     qr_url = get_public_base_url(request) + f"/qr/{token}.png"
     nature_part = (

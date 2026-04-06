@@ -518,7 +518,7 @@
       w.document.write(
         "<!DOCTYPE html><html><head><meta charset='utf-8'><title>" +
           escHtml(title) +
-          "</title></head><body style='margin:0;padding:28px;text-align:center;font-family:Plus Jakarta Sans,system-ui,sans-serif;color:#0f172a'>" +
+          "</title></head><body style='margin:0;padding:28px;text-align:center;font-family:DM Sans,system-ui,sans-serif;color:#0f172a'>" +
           "<h1 style='margin:0 0 8px;font-size:0.75rem;font-weight:800;letter-spacing:0.12em;text-transform:uppercase;color:#64748b'>CHT dispatch identifier</h1>" +
           sub +
           "<img src='" +
@@ -788,46 +788,107 @@
         // Intentionally no-op.
       }
 
-      const allPoints = [[depotLat, depotLng]];
-
-      markers.forEach((m) => {
-        if (!Number.isFinite(m.lat) || !Number.isFinite(m.lng)) return;
-        allPoints.push([m.lat, m.lng]);
-
-        // Hub-and-spoke: depot → each station (only when Leaflet is available)
-        if (map) {
-          L.polyline([[depotLat, depotLng], [m.lat, m.lng]], {
-            color: "#38bdf8",
-            weight: 2,
-            opacity: 0.6,
-          }).addTo(map);
-
-          const marker = L.circleMarker([m.lat, m.lng], {
-            radius: 7,
-            color: "#34d399",
-            weight: 3,
-            fillColor: "#34d399",
-            fillOpacity: 0.85,
-          }).addTo(map);
-
-          const url = "/dispatch/" + m.token;
-          const popupHtml =
-            '<div class="text-sm">' +
-            '<div class="font-semibold" style="color:#dbeafe">' + m.vehicle + "</div>" +
-            '<div style="color:#93c5fd">' + m.label + "</div>" +
-            '<div style="color:#a5b4fc;font-size:12px;margin-top:4px;">GPS: ' + m.lat.toFixed(3) + ", " + m.lng.toFixed(3) + "</div>" +
-            '<a href="' + url + '" style="color:#22c55e;text-decoration:none;">Open QR</a>' +
-            "</div>";
-          marker.bindPopup(popupHtml);
-        }
-      });
-
-      if (map && allPoints.length >= 2) {
-        const bounds = L.latLngBounds(allPoints);
-        map.fitBounds(bounds, { padding: [18, 18], maxZoom: 10 });
+      /** OSRM driving route (same service as public dispatch detail). Falls back to straight segment if fetch fails. */
+      function fetchDashboardOsrmPolyline(dlat, dlng, slat, slng) {
+        const url =
+          "https://router.project-osrm.org/route/v1/driving/" +
+          dlng +
+          "," +
+          dlat +
+          ";" +
+          slng +
+          "," +
+          slat +
+          "?overview=full&geometries=geojson&steps=false";
+        return fetch(url)
+          .then(function (res) {
+            if (!res.ok) return null;
+            return res.json();
+          })
+          .then(function (body) {
+            if (!body || body.code !== "Ok" || !body.routes || !body.routes[0] || !body.routes[0].geometry) return null;
+            var coords = body.routes[0].geometry.coordinates || [];
+            if (coords.length < 2) return null;
+            return coords.map(function (c) {
+              return [c[1], c[0]];
+            });
+          })
+          .catch(function () {
+            return null;
+          });
       }
 
-      if (map) setTimeout(() => map.invalidateSize(), 100);
+      var routePolylinesPromise = null;
+      function getDashboardRoutePolylines() {
+        if (!routePolylinesPromise) {
+          routePolylinesPromise = Promise.all(
+            markers.map(function (m) {
+              if (!Number.isFinite(m.lat) || !Number.isFinite(m.lng)) return Promise.resolve(null);
+              return fetchDashboardOsrmPolyline(depotLat, depotLng, m.lat, m.lng);
+            })
+          );
+        }
+        return routePolylinesPromise;
+      }
+
+      getDashboardRoutePolylines().then(function (polylines) {
+        const allPoints = [[depotLat, depotLng]];
+        markers.forEach(function (m, idx) {
+          if (!Number.isFinite(m.lat) || !Number.isFinite(m.lng)) return;
+          allPoints.push([m.lat, m.lng]);
+          var fallback = [
+            [depotLat, depotLng],
+            [m.lat, m.lng],
+          ];
+          var lineCoords =
+            polylines[idx] && polylines[idx].length >= 2 ? polylines[idx] : fallback;
+
+          if (map) {
+            L.polyline(lineCoords, {
+              color: "#38bdf8",
+              weight: 2,
+              opacity: 0.6,
+            }).addTo(map);
+
+            const marker = L.circleMarker([m.lat, m.lng], {
+              radius: 7,
+              color: "#34d399",
+              weight: 3,
+              fillColor: "#34d399",
+              fillOpacity: 0.85,
+            }).addTo(map);
+
+            const url = "/dispatch/" + m.token;
+            const popupHtml =
+              '<div class="text-sm">' +
+              '<div class="font-semibold" style="color:#dbeafe">' +
+              m.vehicle +
+              "</div>" +
+              '<div style="color:#93c5fd">' +
+              m.label +
+              "</div>" +
+              '<div style="color:#a5b4fc;font-size:12px;margin-top:4px;">GPS: ' +
+              m.lat.toFixed(3) +
+              ", " +
+              m.lng.toFixed(3) +
+              "</div>" +
+              '<a href="' +
+              url +
+              '" style="color:#22c55e;text-decoration:none;">Open QR</a>' +
+              "</div>";
+            marker.bindPopup(popupHtml);
+          }
+        });
+
+        if (map && allPoints.length >= 2) {
+          const bounds = L.latLngBounds(allPoints);
+          map.fitBounds(bounds, { padding: [18, 18], maxZoom: 10 });
+        }
+
+        if (map) setTimeout(function () {
+          map.invalidateSize();
+        }, 100);
+      });
 
       // Fleet fullscreen map (only when Leaflet exists)
       const fleetModal = document.getElementById("fleetMapModal");
@@ -869,45 +930,63 @@
             .addTo(fleetFsMap)
             .bindPopup("Depot (" + depotName + ") — Our location");
 
-          markers.forEach((m) => {
-            if (!Number.isFinite(m.lat) || !Number.isFinite(m.lng)) return;
-            fsAllPoints.push([m.lat, m.lng]);
+          getDashboardRoutePolylines().then(function (polylines) {
+            if (!fleetFsMap) return;
+            markers.forEach(function (m, idx) {
+              if (!Number.isFinite(m.lat) || !Number.isFinite(m.lng)) return;
+              fsAllPoints.push([m.lat, m.lng]);
+              var fallback = [
+                [depotLat, depotLng],
+                [m.lat, m.lng],
+              ];
+              var lineCoords =
+                polylines[idx] && polylines[idx].length >= 2 ? polylines[idx] : fallback;
+              L.polyline(lineCoords, {
+                color: "#38bdf8",
+                weight: 3,
+                opacity: 0.75,
+              }).addTo(fleetFsMap);
 
-            L.polyline([[depotLat, depotLng], [m.lat, m.lng]], {
-              color: "#38bdf8",
-              weight: 3,
-              opacity: 0.75,
-            }).addTo(fleetFsMap);
+              const mk = L.circleMarker([m.lat, m.lng], {
+                radius: 8,
+                color: "#34d399",
+                weight: 3,
+                fillColor: "#34d399",
+                fillOpacity: 0.9,
+              }).addTo(fleetFsMap);
 
-            const mk = L.circleMarker([m.lat, m.lng], {
-              radius: 8,
-              color: "#34d399",
-              weight: 3,
-              fillColor: "#34d399",
-              fillOpacity: 0.9,
-            }).addTo(fleetFsMap);
+              const url = "/dispatch/" + m.token;
+              mk.bindPopup(
+                '<div class="text-sm">' +
+                  '<div class="font-semibold" style="color:#dbeafe">' +
+                  m.vehicle +
+                  "</div>" +
+                  '<div style="color:#93c5fd">' +
+                  m.label +
+                  "</div>" +
+                  '<div style="color:#a5b4fc;font-size:12px;margin-top:4px;">GPS: ' +
+                  m.lat.toFixed(3) +
+                  ", " +
+                  m.lng.toFixed(3) +
+                  "</div>" +
+                  '<a href="' +
+                  url +
+                  '" style="color:#22c55e;text-decoration:none;">Open QR</a>' +
+                  "</div>"
+              );
+            });
 
-            const url = "/dispatch/" + m.token;
-            mk.bindPopup(
-              '<div class="text-sm">' +
-                '<div class="font-semibold" style="color:#dbeafe">' + m.vehicle + "</div>" +
-                '<div style="color:#93c5fd">' + m.label + "</div>" +
-                '<div style="color:#a5b4fc;font-size:12px;margin-top:4px;">GPS: ' + m.lat.toFixed(3) + ", " + m.lng.toFixed(3) + "</div>" +
-                '<a href="' + url + '" style="color:#22c55e;text-decoration:none;">Open QR</a>' +
-                "</div>"
-            );
+            if (fsAllPoints.length >= 2) {
+              const b = L.latLngBounds(fsAllPoints);
+              fleetFsMap.fitBounds(b, { padding: [56, 56], maxZoom: 10 });
+            } else {
+              fleetFsMap.setView([depotLat, depotLng], 5);
+            }
+
+            setTimeout(function () {
+              if (fleetFsMap) fleetFsMap.invalidateSize();
+            }, 150);
           });
-
-          if (fsAllPoints.length >= 2) {
-            const b = L.latLngBounds(fsAllPoints);
-            fleetFsMap.fitBounds(b, { padding: [56, 56], maxZoom: 10 });
-          } else {
-            fleetFsMap.setView([depotLat, depotLng], 5);
-          }
-
-          setTimeout(() => {
-            if (fleetFsMap) fleetFsMap.invalidateSize();
-          }, 150);
         } else {
           // Leaflet unavailable: modal still opens and the static background stays visible.
           // (Markers/lines will be absent; schematic overlay on the page still works.)

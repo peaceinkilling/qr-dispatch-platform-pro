@@ -75,7 +75,9 @@
 
           {% if item.distance_display %}
             <div class="muted2 text-xs mt-1">
-              Approx from depot: <span class="text-white/80 font-medium">{{ item.distance_display }}</span>
+              {% if item.distance_mode == 'road' %}Route from depot{% else %}Approx from depot{% endif %}:
+              <span class="text-white/80 font-medium">{{ item.distance_display }}</span>
+              {% if item.distance_mode == 'air' %}<span class="muted2"> (straight line)</span>{% endif %}
             </div>
           {% endif %}
         </div>

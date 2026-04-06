@@ -7,7 +7,6 @@
   <div>
     <div class="detail-pixel-kicker">Public dispatch</div>
     <div class="detail-pixel-page-title detail-pixel-page-title--brand">Dispatch</div>
-    <p class="detail-pixel-subtitle mt-1">Receiving-side view · route &amp; shipment context</p>
   </div>
   <div class="detail-pixel-status {{ item.status_meta.pill }}">
     <span class="h-2.5 w-2.5 rounded-full {{ item.status_meta.dot }}"></span>
@@ -58,8 +57,8 @@
         {% endif %}
         {% if item.distance_display %}
         <div class="detail-meta-cell">
-          <dt class="detail-meta-label">Approx. distance</dt>
-          <dd class="detail-meta-value">{{ item.distance_display }}</dd>
+          <dt class="detail-meta-label">{% if item.distance_mode == 'road' %}Route distance{% else %}Approx. distance{% endif %}</dt>
+          <dd class="detail-meta-value">{{ item.distance_display }}{% if item.distance_mode == 'air' %} <span class="detail-meta-from-pin">(straight line)</span>{% endif %}</dd>
         </div>
         {% endif %}
         <div class="detail-meta-cell">
@@ -350,6 +349,8 @@
     </div>
   </div>
 
+  <script type="application/json" id="detailRouteLatLngs">{% if item.route_latlngs %}{{ item.route_latlngs | tojson }}{% else %}null{% endif %}</script>
+
   <script>
     (function () {
       const openBtn = document.getElementById("openQrBtn");
@@ -538,6 +539,18 @@
       const depotLat = {{ depot_lat }};
       const depotLng = {{ depot_lng }};
 
+      function readDetailRouteLatLngs() {
+        const el = document.getElementById("detailRouteLatLngs");
+        if (!el) return null;
+        try {
+          const data = JSON.parse(el.textContent || "null");
+          return Array.isArray(data) && data.length >= 2 ? data : null;
+        } catch (_) {
+          return null;
+        }
+      }
+      const routeLineLatLngs = readDetailRouteLatLngs();
+
       // Initialize the real location map (Leaflet).
       const locationMap = document.getElementById("locationMap");
       let inlineMap = null;
@@ -593,14 +606,15 @@
             .addTo(inlineMap)
             .bindPopup("Depot ({{ depot_name | e }}) — Our location");
 
-          // Preview connector: depot -> receiving station
-          L.polyline(
-            [
-              [depotLat, depotLng],
-              [lat, lng],
-            ],
-            { color: "#38bdf8", weight: 6, opacity: 0.95 }
-          ).addTo(inlineMap);
+          // Driving route (OSRM) when available, else straight segment
+          const previewLine =
+            routeLineLatLngs && routeLineLatLngs.length >= 2
+              ? routeLineLatLngs
+              : [
+                  [depotLat, depotLng],
+                  [lat, lng],
+                ];
+          L.polyline(previewLine, { color: "#38bdf8", weight: 6, opacity: 0.95 }).addTo(inlineMap);
           const locFb = document.getElementById("locationFallbackLine");
           if (locFb) locFb.style.display = "none";
 
@@ -621,10 +635,7 @@
                 lng.toFixed(3)
             );
 
-          const bounds = L.latLngBounds([
-            [depotLat, depotLng],
-            [lat, lng],
-          ]);
+          const bounds = L.latLngBounds(previewLine);
           inlineMap.fitBounds(bounds, { padding: [18, 18], maxZoom: 10 });
           setTimeout(() => inlineMap.invalidateSize(), 0);
 
@@ -673,19 +684,20 @@
                 const fsBar = document.getElementById("fullscreenBasemapBar");
                 attachBasemapToMap(fullscreenMap, fsBar, "streets");
                 L.circleMarker([depotLat, depotLng], { radius: 10, color: "#f59e0b", weight: 3, fillColor: "#f59e0b", fillOpacity: 0.95 }).addTo(fullscreenMap).bindPopup("Depot ({{ depot_name | e }})");
-                L.polyline(
-                  [
-                    [depotLat, depotLng],
-                    [lat, lng],
-                  ],
-                  { color: "#38bdf8", weight: 7, opacity: 0.98 }
-                ).addTo(fullscreenMap);
+                const fsLine =
+                  routeLineLatLngs && routeLineLatLngs.length >= 2
+                    ? routeLineLatLngs
+                    : [
+                        [depotLat, depotLng],
+                        [lat, lng],
+                      ];
+                L.polyline(fsLine, { color: "#38bdf8", weight: 7, opacity: 0.98 }).addTo(fullscreenMap);
                 L.circleMarker([lat, lng], { radius: 9, color: "#34d399", weight: 3, fillColor: "#34d399", fillOpacity: 0.9 }).addTo(fullscreenMap).bindPopup(locationMap.getAttribute("data-name") || "");
                 // Hide only the fallback line once Leaflet draws.
                 const fbLine = document.getElementById("detailMapFallbackLine");
                 if (fbLine) fbLine.style.display = "none";
 
-                fullscreenMap.fitBounds(L.latLngBounds([[depotLat, depotLng], [lat, lng]]), { padding: [48, 48], maxZoom: 12 });
+                fullscreenMap.fitBounds(L.latLngBounds(fsLine), { padding: [48, 48], maxZoom: 12 });
 
                 // Leaflet often needs a couple renders after the modal becomes visible.
                 // Call invalidateSize even if tiles are blocked (whenReady may never fire).
