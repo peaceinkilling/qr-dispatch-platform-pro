@@ -278,6 +278,7 @@ html.theme-light .app-shell a[href]:where(:not(.btn):not([class*="btn-"]):not(.t
 .app-brand-title-line {
   display: block;
   font-size: clamp(2.85rem, 8.5vw, 5rem);
+  letter-spacing: -0.045em;
   background: linear-gradient(
     102deg,
     #fef2f2 0%,
@@ -296,6 +297,20 @@ html.theme-light .app-shell a[href]:where(:not(.btn):not([class*="btn-"]):not(.t
   color: transparent;
   -webkit-text-fill-color: transparent;
   filter: drop-shadow(0 2px 20px rgba(234, 40, 4, 0.12));
+}
+
+/* Replicate: lowercase “tag” line — playground energy without shouting */
+.app-brand-manifesto {
+  margin: 0.45rem 0 0;
+  padding: 0;
+  font-family: var(--font-ui);
+  font-size: 0.75rem;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: lowercase;
+  color: rgba(187, 187, 187, 0.75);
+  max-width: 26rem;
+  line-height: 1.5;
 }
 
 .app-brand-byline {
@@ -330,7 +345,28 @@ html.theme-light .app-shell a[href]:where(:not(.btn):not([class*="btn-"]):not(.t
 
 /* --- Dashboard: search / filter (synchronous grid) --- */
 .filter-panel {
+  position: relative;
   border: 1px solid rgba(255, 255, 255, 0.09);
+  border-radius: 1.35rem;
+  overflow: hidden;
+}
+
+.filter-panel::before {
+  content: "";
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: 0;
+  height: 3px;
+  background: linear-gradient(
+    90deg,
+    rgba(234, 40, 4, 0.75) 0%,
+    rgba(225, 29, 72, 0.65) 35%,
+    rgba(219, 39, 119, 0.55) 65%,
+    rgba(59, 130, 246, 0.55) 100%
+  );
+  pointer-events: none;
+  z-index: 1;
 }
 
 .filter-panel-title {
@@ -2994,17 +3030,16 @@ html.theme-light #qrModalBackdrop .title {
 }
 
 html.theme-light .filter-panel {
-  border-color: rgba(125, 211, 252, 0.4);
-  background: linear-gradient(
-    175deg,
-    rgba(236, 248, 255, 0.98) 0%,
-    rgba(220, 238, 252, 0.96) 45%,
-    rgba(228, 242, 252, 0.98) 100%
-  );
-  background-color: #e4f0fa;
+  border-color: rgba(32, 32, 32, 0.1);
+  background: #ffffff;
+  background-color: #ffffff;
   box-shadow:
     0 1px 0 rgba(255, 255, 255, 0.75) inset,
-    0 20px 52px rgba(15, 23, 42, 0.14);
+    0 20px 52px rgba(15, 23, 42, 0.08);
+}
+
+html.theme-light .app-brand-manifesto {
+  color: #646464;
 }
 
 /* ========== Light: public dispatch (.detail-pixel-scope) — match dark cyan/slate energy ========== */
