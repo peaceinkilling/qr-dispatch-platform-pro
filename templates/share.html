@@ -1,0 +1,205 @@
+{% extends "base.html" %}
+
+{% block title %}Share Dispatch — Dispatch QR{% endblock %}
+
+{% block header %}
+<div class="flex flex-col sm:flex-row sm:items-end sm:justify-between gap-4">
+  <div>
+    <div class="title text-3xl sm:text-4xl font-bold tracking-tight">Share + QR</div>
+    <div class="muted mt-1 text-sm">Public link points to the safe dispatch page.</div>
+  </div>
+  <div class="flex gap-3">
+    <a class="btn btn-ghost" href="/">Dashboard</a>
+    <a class="btn btn-primary" href="/dispatch/{{ item.public_token }}">Public preview</a>
+  </div>
+</div>
+{% endblock %}
+
+{% block content %}
+  <div class="grid grid-cols-1 lg:grid-cols-2 gap-4">
+    <div class="glass-strong p-5 shine card-hover reveal">
+      <div class="muted text-sm">QR (popup)</div>
+      <div class="mt-3 flex items-center justify-center">
+        <div class="p-4 glass rd-26 card-hover">
+          <img
+            src="{{ qr_url }}"
+            alt="QR code for dispatch"
+            class="h-auto w-64 maxw-80vw mx-auto"
+          />
+        </div>
+      </div>
+
+      <div class="mt-4 flex flex-col sm:flex-row gap-3 sm:items-center sm:justify-between">
+        <button type="button" class="btn btn-ghost copyLinkBtn" id="copyLinkBtn">Copy public link</button>
+      </div>
+
+      <div class="glass p-4 mt-4 rd-26 card-hover">
+        <div class="muted text-sm">Public URL</div>
+        <div class="mt-2 text-white/90 text-sm break-words">{{ share_url }}</div>
+      </div>
+    </div>
+
+    <div class="glass-strong p-5 card-hover reveal">
+      <div class="flex items-start justify-between gap-4">
+        <div>
+          <div class="status-chip {{ item.status_meta.pill }}">
+            <span class="h-2 w-2 rounded-full {{ item.status_meta.dot }}"></span>
+            <span>{{ item.status_meta.label }}</span>
+          </div>
+          <div class="title text-2xl font-bold mt-3">{{ item.vehicle_number }}</div>
+          <div class="muted mt-1">To: {{ item.to_display }}</div>
+          <div class="muted2 text-xs mt-1">
+            ICN: <span class="text-white/80 font-medium">{{ item.icn_number if item.icn_number else '—' }}</span>
+          </div>
+          {% if item.nature_of_items_display %}
+          <div class="muted2 text-xs mt-1">
+            Nature of Stores: <span class="text-white/90 font-semibold">{{ item.nature_of_items_display }}</span>
+          </div>
+          {% endif %}
+          {% if item.destination_pincode %}
+            <div class="muted2 text-xs mt-1">
+              PIN: <span class="text-white/80 font-medium">{{ item.destination_pincode }}</span>
+            </div>
+          {% endif %}
+          {% if item.station_state_name %}
+            <div class="muted2 text-xs mt-2">
+              District: <span class="text-white/80 font-medium">{{ item.station_district }}</span>
+              <span class="muted2">• {{ item.station_state_name }}</span>
+            </div>
+          {% endif %}
+          {% if item.station_coords_display %}
+            <div class="muted2 text-xs mt-1">
+              GPS: <span class="text-white/80 font-medium">{{ item.station_coords_display }}</span>
+            </div>
+          {% endif %}
+
+          {% if item.distance_display %}
+            <div class="muted2 text-xs mt-1">
+              Approx from depot: <span class="text-white/80 font-medium">{{ item.distance_display }}</span>
+            </div>
+          {% endif %}
+        </div>
+      </div>
+
+      <div class="mt-4 grid grid-cols-1 sm:grid-cols-2 gap-3">
+        <div class="glass p-4 rd-22 card-hover">
+          <div class="muted text-sm">Dispatch date</div>
+          <div class="title text-lg font-bold mt-1">{{ item.dispatch_display }}</div>
+        </div>
+        <div class="glass p-4 rd-22 card-hover">
+          <div class="muted text-sm">Likely arrival</div>
+          <div class="title text-lg font-bold mt-1">{{ item.eta_display }}</div>
+          <div class="muted2 text-xs mt-1">{{ item.eta_remaining }}</div>
+        </div>
+        <div class="glass p-4 rd-22 card-hover">
+          <div class="muted text-sm">Driver</div>
+          <div class="title text-lg font-bold mt-1">{{ item.driver_name }}</div>
+          <div class="muted2 text-xs mt-1">{{ item.driver_mobile }}</div>
+        </div>
+        <div class="glass p-4 rd-22 card-hover">
+          <div class="muted text-sm">Packages</div>
+          <div class="title text-lg font-bold mt-1">{{ item.package_count }}</div>
+          <div class="muted2 text-xs mt-1">{{ item.weight_display }}</div>
+        </div>
+      </div>
+
+      <div class="mt-5">
+        <div class="muted text-sm mb-2">Share via</div>
+        <div class="flex flex-col sm:flex-row gap-3">
+          <button type="button" class="btn btn-primary waShareBtn" id="waShareBtn">WhatsApp share</button>
+          <button type="button" class="btn btn-ghost emailShareBtn" id="emailShareBtn">Email share</button>
+        </div>
+      </div>
+
+      <div class="glass p-4 mt-5 rd-26 card-hover">
+        <div class="muted text-sm">What the receiving unit sees</div>
+        <div class="mt-2 text-white/90 text-sm">
+          Vehicle, dispatch date, station/location, driver (name + mobile), package count, and likely arrival date.
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    const shareUrl = "{{ share_url }}";
+    const whatsappText = "{{ whatsapp_text }}";
+
+    function showToast(message) {
+      const toastEl = document.getElementById("toast");
+      const toastText = document.getElementById("toastText");
+      if (!toastEl || !toastText) return;
+      toastText.textContent = message;
+      toastEl.classList.remove("hidden");
+      toastEl.classList.add("flex");
+      window.setTimeout(() => {
+        toastEl.classList.add("hidden");
+        toastEl.classList.remove("flex");
+      }, 2200);
+    }
+
+    document.getElementById("copyLinkBtn").addEventListener("click", async () => {
+      try {
+        await navigator.clipboard.writeText(shareUrl);
+        showToast("Public link copied.");
+      } catch (e) {
+        showToast("Copy failed.");
+      }
+    });
+
+    document.getElementById("waShareBtn").addEventListener("click", () => {
+      const url = "https://wa.me/?text=" + encodeURIComponent(whatsappText);
+      window.open(url, "_blank", "noopener,noreferrer");
+    });
+
+    document.getElementById("emailShareBtn").addEventListener("click", () => {
+      const subject = "Dispatch details";
+      const url =
+        "mailto:?subject=" + encodeURIComponent(subject) + "&body=" + encodeURIComponent(whatsappText);
+      window.location.href = url;
+    });
+  </script>
+
+  <!-- QR popup modal -->
+  <div
+    id="qrModalBackdrop"
+    class="fixed inset-0 z-50 hidden items-center justify-center p-4"
+    role="dialog"
+    aria-modal="true"
+  >
+    <div class="absolute inset-0 bg-black/60 backdrop-blur"></div>
+    <div class="relative glass-strong p-5 sm:p-6 rd-26 w-full qr-modal-panel card-hover">
+      <div class="flex items-center justify-between gap-3 mb-3 w-full">
+        <div class="title text-lg font-bold">Dispatch QR</div>
+        <button id="qrModalClose" type="button" class="btn btn-ghost btn-sm">Close</button>
+      </div>
+      <img id="qrModalImg" alt="Dispatch QR" src="{{ qr_url }}" class="qr-modal-img" />
+      <div class="muted2 text-xs mt-3 text-center">Scan or re-share the dispatch details.</div>
+    </div>
+  </div>
+
+  <script>
+    (function () {
+      const viewBtn = document.getElementById("viewQrBtn");
+      const backdrop = document.getElementById("qrModalBackdrop");
+      const closeBtn = document.getElementById("qrModalClose");
+      if (!viewBtn || !backdrop) return;
+
+      function openQr() {
+        backdrop.classList.remove("hidden");
+        backdrop.classList.add("flex");
+      }
+
+      function closeQr() {
+        backdrop.classList.add("hidden");
+        backdrop.classList.remove("flex");
+      }
+
+      viewBtn.addEventListener("click", openQr);
+      if (closeBtn) closeBtn.addEventListener("click", closeQr);
+      backdrop.addEventListener("click", (e) => {
+        if (e.target === backdrop) closeQr();
+      });
+    })();
+  </script>
+{% endblock %}
+

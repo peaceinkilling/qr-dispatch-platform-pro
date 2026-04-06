@@ -1,0 +1,280 @@
+{% extends "base.html" %}
+
+{% block title %}Edit Dispatch — Dispatch QR{% endblock %}
+
+{% block header %}
+<div class="flex flex-col sm:flex-row sm:items-end sm:justify-between gap-4">
+  <div>
+    <div class="title text-3xl sm:text-4xl font-bold tracking-tight">Edit dispatch</div>
+    <div class="muted mt-1 text-sm">Modify dispatch data while preserving depot-only internal context.</div>
+  </div>
+  <div class="flex gap-3">
+    <a href="/" class="btn btn-ghost">Dashboard</a>
+    <a href="/dispatch/{{ token }}" class="btn btn-primary">Public preview</a>
+  </div>
+</div>
+{% endblock %}
+
+{% block content %}
+  <div class="glass-strong p-4 sm:p-6 card-hover reveal">
+    <form method="post" action="/admin/edit/{{ token }}" class="grid grid-cols-1 md:grid-cols-2 gap-4">
+      <div class="md:col-span-2">
+        <label class="muted text-sm" for="vehicle_number">Vehicle number</label>
+        <input id="vehicle_number" class="field mt-2" name="vehicle_number" value="{{ item.vehicle_number }}" title="Vehicle number" required />
+      </div>
+
+      <div>
+        <label class="muted text-sm" for="dispatch_date">Dispatch date</label>
+        <input id="dispatch_date" class="field mt-2" type="date" name="dispatch_date" value="{{ item.dispatch_date }}" title="Dispatch date" required />
+      </div>
+
+      <div>
+        <label class="muted text-sm" for="eta_date">Likely arrival date</label>
+        <input id="eta_date" class="field mt-2" type="date" name="eta_date" value="{{ item.eta_date }}" title="Likely arrival date" required />
+      </div>
+
+      <div class="md:col-span-2">
+        <label class="muted text-sm" for="destination">Station / Location</label>
+        <input
+          id="destination"
+          class="field mt-2"
+          name="destination"
+          value="{{ item.destination }}"
+          title="Station / Location"
+        />
+        <div class="muted text-xs mt-2">Tip: If PIN code is entered, GPS & station name are auto-resolved.</div>
+      </div>
+
+      <div>
+        <label class="muted text-sm" for="icn_number">ICN number</label>
+        <input id="icn_number" class="field mt-2" name="icn_number" value="{{ item.icn_number }}" title="ICN number" required />
+      </div>
+
+      <div>
+        <label class="muted text-sm" for="destination_pincode">Destination PIN code</label>
+        <input
+          id="destination_pincode"
+          class="field mt-2"
+          name="destination_pincode"
+          value="{{ item.destination_pincode }}"
+          title="Destination PIN code"
+          placeholder="e.g. 302001"
+          inputmode="numeric"
+        />
+        <div id="pinResolved" class="muted2 text-xs mt-2 hidden"></div>
+      </div>
+
+      <div>
+        <label class="muted text-sm" for="total_weight_kg">Total weight (kg)</label>
+        <input
+          id="total_weight_kg"
+          class="field mt-2"
+          name="total_weight_kg"
+          type="number"
+          step="0.1"
+          min="0"
+          value="{{ item.total_weight_kg }}"
+          placeholder="e.g. 405.7"
+          title="Total weight (kg)"
+          required
+        />
+        <div class="muted2 text-xs mt-2">Authoritative total from weighbridge or manifest (not calculated from packages).</div>
+      </div>
+
+      <div>
+        <label class="muted text-sm" for="cht_capacity_weight_kg">CHT load capability (kg)</label>
+        <input
+          id="cht_capacity_weight_kg"
+          class="field mt-2"
+          name="cht_capacity_weight_kg"
+          type="number"
+          step="0.1"
+          min="0"
+          value="{{ item.cht_capacity_weight_kg if item.cht_capacity_weight_kg is not none else 5000 }}"
+          title="CHT load capability (kg)"
+        />
+        <div class="muted2 text-xs mt-2">Used to compute “capacity used %”.</div>
+      </div>
+
+      {% set nature_parts = (item.nature_of_items or '').replace(' ','').split(',') %}
+      <div class="md:col-span-2">
+        <label class="muted text-sm">Nature of Stores</label>
+        <div class="mt-2 flex flex-wrap gap-4">
+          <label class="flex items-center gap-2 cursor-pointer">
+            <input type="checkbox" name="nature_1" value="1" class="rounded" {% if '1' in nature_parts %}checked{% endif %} />
+            <span class="text-white/90 nature-option-label">I</span>
+          </label>
+          <label class="flex items-center gap-2 cursor-pointer">
+            <input type="checkbox" name="nature_2" value="2" class="rounded" {% if '2' in nature_parts %}checked{% endif %} />
+            <span class="text-white/90 nature-option-label">II</span>
+          </label>
+          <label class="flex items-center gap-2 cursor-pointer">
+            <input type="checkbox" name="nature_3" value="3" class="rounded" {% if '3' in nature_parts %}checked{% endif %} />
+            <span class="text-white/90 nature-option-label">III</span>
+          </label>
+          <label class="flex items-center gap-2 cursor-pointer">
+            <input type="checkbox" name="nature_4" value="4" class="rounded" {% if '4' in nature_parts %}checked{% endif %} />
+            <span class="text-white/90 nature-option-label">IV</span>
+          </label>
+        </div>
+        <div class="muted2 text-xs mt-2">Select one or more. Shown as Roman numerals on public page. Meaning shared privately with receiver.</div>
+      </div>
+
+      <div>
+        <label class="muted text-sm" for="driver_name">Driver name</label>
+        <input id="driver_name" class="field mt-2" name="driver_name" value="{{ item.driver_name }}" title="Driver name" required />
+      </div>
+
+      <div>
+        <label class="muted text-sm" for="driver_mobile">Driver mobile</label>
+        <input id="driver_mobile" class="field mt-2" name="driver_mobile" value="{{ item.driver_mobile }}" title="Driver mobile" required />
+      </div>
+
+      <div>
+        <label class="muted text-sm" for="package_count">Number of packages</label>
+        <input
+          id="package_count"
+          class="field mt-2"
+          type="number"
+          name="package_count"
+          min="0"
+          value="{{ item.package_count }}"
+          placeholder="e.g. 10"
+          title="Number of packages"
+          required
+        />
+      </div>
+
+      <div>
+        <label class="muted text-sm" for="package_weight_kg">Optional: reference avg. weight (kg)</label>
+        <input
+          id="package_weight_kg"
+          class="field mt-2"
+          name="package_weight_kg"
+          type="number"
+          step="0.1"
+          min="0"
+          value="{{ item.package_weight_kg if item.package_weight_kg is not none else 0 }}"
+          placeholder="e.g. rough average"
+          title="Optional reference only — not used to compute total"
+        />
+        <div class="muted2 text-xs mt-2">
+          Total weight must come from weighbridge or manifest; optional field is not multiplied by package count.
+        </div>
+      </div>
+
+      <div>
+        <label class="muted text-sm" for="status">Status</label>
+        <select id="status" class="field mt-2" name="status" title="Dispatch status">
+          {% for s in ["On Route", "Delivered"] %}
+            <option value="{{ s }}" {% if item.status == s %}selected{% endif %}>{{ s }}</option>
+          {% endfor %}
+        </select>
+      </div>
+
+      <div class="md:col-span-2">
+        <label class="muted text-sm">Internal notes (depot only)</label>
+        <textarea
+          class="field mt-2 minh-110"
+          name="internal_notes"
+          placeholder="Optional. Never shown on the public dispatch page."
+        >{{ item.internal_notes or "" }}</textarea>
+        <div class="muted text-xs mt-2">Public QR page hides confidential metadata by design.</div>
+      </div>
+
+      <div class="md:col-span-2 flex flex-col sm:flex-row gap-3 sm:items-center sm:justify-between">
+        <button class="btn btn-primary" type="submit">Save changes</button>
+
+        <a href="/admin/delete/{{ token }}" class="btn btn-danger">Delete CHT</a>
+      </div>
+    </form>
+  </div>
+  <script>
+    (function () {
+      const pinInput = document.getElementById("destination_pincode");
+      const pinResolvedEl = document.getElementById("pinResolved");
+      const destinationInput = document.getElementById("destination");
+      if (!pinInput || !pinResolvedEl) return;
+
+      let pinT = null;
+      let destT = null;
+      let suggestedPinFromPlace = "";
+
+      function setResolved(html) {
+        pinResolvedEl.innerHTML = html;
+        pinResolvedEl.classList.remove("hidden");
+      }
+
+      function clearResolved() {
+        pinResolvedEl.innerHTML = "";
+        pinResolvedEl.classList.add("hidden");
+      }
+
+      async function resolvePin(pin) {
+        try {
+          const res = await fetch("/pincode/resolve/" + pin);
+          const data = await res.json();
+          if (!data || !data.found) {
+            setResolved("PIN not found. Enter Station/Location manually.");
+            return;
+          }
+          const place = data.place_name;
+          const state = data.state_name;
+          setResolved("Resolved: " + place + " (" + state + ") — editable.");
+          if (destinationInput) destinationInput.value = place;
+          suggestedPinFromPlace = "";
+        } catch (e) {
+          // Ignore network errors.
+        }
+      }
+
+      pinInput.addEventListener("input", () => {
+        const pin = (pinInput.value || "").replace(/\D/g, "");
+        if (pin.length !== 6) {
+          clearResolved();
+          if (pin.length < 6) suggestedPinFromPlace = "";
+          return;
+        }
+        if (pin !== suggestedPinFromPlace) suggestedPinFromPlace = "";
+        if (pinT) window.clearTimeout(pinT);
+        pinT = window.setTimeout(() => resolvePin(pin), 350);
+      });
+
+      async function resolvePlace(name) {
+        const q = (name || "").trim();
+        if (q.length < 3) return;
+        try {
+          const res = await fetch("/api/place-pin?q=" + encodeURIComponent(q));
+          const data = await res.json();
+          if (!data || !data.found) {
+            setResolved("No PIN match — enter PIN manually if needed.");
+            return;
+          }
+          const cur = (pinInput.value || "").replace(/\D/g, "");
+          if (!cur || cur === suggestedPinFromPlace) {
+            pinInput.value = data.pincode;
+            suggestedPinFromPlace = data.pincode;
+            setResolved("Matched: " + data.place_name + " → PIN " + data.pincode);
+          } else {
+            setResolved("Found PIN " + data.pincode + " for " + data.place_name + " (PIN unchanged).");
+          }
+        } catch (e) {
+          /* ignore */
+        }
+      }
+
+      if (destinationInput) {
+        destinationInput.addEventListener("input", () => {
+          if (destT) window.clearTimeout(destT);
+          destT = window.setTimeout(() => resolvePlace(destinationInput.value), 450);
+        });
+      }
+
+      const existingPin = (pinInput.value || "").replace(/\D/g, "");
+      if (existingPin.length === 6) {
+        resolvePin(existingPin);
+      }
+    })();
+  </script>
+{% endblock %}
+
