@@ -1873,6 +1873,7 @@ def dispatch_detail(request: Request, token: str):
             "depot_lat": DEPOT_LAT,
             "depot_lng": DEPOT_LNG,
             "depot_name": DEPOT_NAME,
+            "depot_pincode": DEPOT_PINCODE,
         },
     )
 

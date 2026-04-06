@@ -33,6 +33,13 @@
       </p>
 
       <dl class="detail-meta-grid mt-4">
+        <div class="detail-meta-cell detail-meta-cell--from">
+          <dt class="detail-meta-label">From</dt>
+          <dd class="detail-meta-value">
+            Banar, Rajasthan
+            <span class="detail-meta-from-pin">· PIN {{ depot_pincode }}</span>
+          </dd>
+        </div>
         <div class="detail-meta-cell">
           <dt class="detail-meta-label">{{ item.station_state_name if item.station_state_name else 'District' }}</dt>
           <dd class="detail-meta-value">{{ item.station_district if item.station_district else '—' }}</dd>
@@ -51,7 +58,7 @@
         {% endif %}
         {% if item.distance_display %}
         <div class="detail-meta-cell">
-          <dt class="detail-meta-label">From depot</dt>
+          <dt class="detail-meta-label">Approx. distance</dt>
           <dd class="detail-meta-value">{{ item.distance_display }}</dd>
         </div>
         {% endif %}
@@ -266,10 +273,6 @@
         </div>
       </div>
     </div>
-  </div>
-
-  <div class="detail-footnote detail-pixel-footnote mt-2 py-4 px-1">
-    <div class="detail-footnote-label">Shared by depot</div>
   </div>
 </div>
 
