@@ -1,0 +1,53 @@
+{% extends "base.html" %}
+
+{% block title %}Deleted CHTs Log — Dispatch QR{% endblock %}
+
+{% block header %}
+<div class="flex flex-col sm:flex-row sm:items-end sm:justify-between gap-4">
+  <div>
+    <div class="title text-3xl sm:text-4xl font-bold tracking-tight">Deleted CHTs Log</div>
+    <div class="muted mt-1 text-sm">Record of deleted dispatches with date and remarks.</div>
+  </div>
+  <a href="/" class="btn btn-primary">Dashboard</a>
+</div>
+{% endblock %}
+
+{% block content %}
+  <div class="glass-strong p-4 sm:p-6 card-hover reveal">
+    {% if items and items|length > 0 %}
+      <div class="overflow-x-auto">
+        <table class="w-full text-left">
+          <thead>
+            <tr class="border-b border-white/15">
+              <th class="muted text-xs font-semibold uppercase tracking-wider py-3 pr-4">Deleted at</th>
+              <th class="muted text-xs font-semibold uppercase tracking-wider py-3 pr-4">Vehicle</th>
+              <th class="muted text-xs font-semibold uppercase tracking-wider py-3 pr-4">Destination</th>
+              <th class="muted text-xs font-semibold uppercase tracking-wider py-3 pr-4">Driver</th>
+              <th class="muted text-xs font-semibold uppercase tracking-wider py-3 pr-4">Packages</th>
+              <th class="muted text-xs font-semibold uppercase tracking-wider py-3 pr-4">Weight (kg)</th>
+              <th class="muted text-xs font-semibold uppercase tracking-wider py-3 pr-4">Remarks</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for i in items %}
+              <tr class="border-b border-white/10 hover:bg-white/5">
+                <td class="py-3 pr-4 muted2 text-sm">{{ i.deleted_at }}</td>
+                <td class="py-3 pr-4 text-white/90 font-medium">{{ i.vehicle_number }}</td>
+                <td class="py-3 pr-4 muted2">{{ i.destination }}</td>
+                <td class="py-3 pr-4 muted2">{{ i.driver_name }}</td>
+                <td class="py-3 pr-4 muted2">{{ i.package_count }}</td>
+                <td class="py-3 pr-4 muted2">{{ i.total_weight_kg }}</td>
+                <td class="py-3 pr-4 muted2 text-sm max-w-xs">{{ i.remarks }}</td>
+              </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    {% else %}
+      <div class="text-center py-12 muted2">
+        <p class="text-lg">No deleted CHTs yet.</p>
+        <p class="text-sm mt-2">Deleted dispatches will appear here with date and remarks.</p>
+      </div>
+    {% endif %}
+  </div>
+{% endblock %}

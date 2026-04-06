@@ -1,0 +1,58 @@
+{% extends "base.html" %}
+
+{% block title %}Admin 2FA — Dispatch QR{% endblock %}
+
+{% block header %}
+<div class="flex flex-col sm:flex-row sm:items-end sm:justify-between gap-4 mb-2">
+  <div>
+    <div class="title text-3xl sm:text-4xl font-bold tracking-tight">Verify Login</div>
+    <div class="muted mt-1 text-sm">Enter the 6-digit code sent to your email.</div>
+  </div>
+</div>
+{% endblock %}
+
+{% block content %}
+<div class="max-w-md mx-auto mt-10">
+  <div class="glass-strong p-6 sm:p-7 rd-26 card-hover">
+    <div class="muted2 text-sm mb-4">
+      Verification email target:
+      <span class="text-white/90 font-semibold">{{ admin_2fa_email }}</span>
+    </div>
+    <div class="muted2 text-xs mb-4">
+      Use <strong>one-time access code</strong> for this login only, or
+      <strong>device access code</strong> to trust this device for future logins.
+    </div>
+    {% if email_status and email_status != "sent" %}
+      <div class="p-3 rd-22 bg-amber-500/15 text-amber-100 border border-amber-500/25 mb-4">
+        {{ email_status }}
+      </div>
+    {% endif %}
+    {% if error %}
+      <div class="p-3 rd-22 bg-red-500/15 text-red-200 border border-red-500/25 mb-4">
+        {{ error }}
+      </div>
+    {% endif %}
+
+    <form method="post" action="/admin/2fa" class="space-y-4">
+      <div>
+        <label class="muted text-sm" for="otp_code">Email verification code</label>
+        <input
+          id="otp_code"
+          class="field mt-2"
+          name="otp_code"
+          inputmode="numeric"
+          autocomplete="one-time-code"
+          pattern="[0-9]{6}"
+          placeholder="6-digit code"
+          required
+        />
+      </div>
+
+      <div class="pt-2">
+        <button class="btn btn-primary w-full" type="submit">Verify and continue</button>
+      </div>
+    </form>
+  </div>
+</div>
+{% endblock %}
+

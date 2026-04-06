@@ -1,0 +1,48 @@
+{% extends "base.html" %}
+
+{% block title %}Admin Login — Dispatch QR{% endblock %}
+
+{% block header %}
+<div class="flex flex-col sm:flex-row sm:items-end sm:justify-between gap-4 mb-2">
+  <div>
+    <div class="title text-3xl sm:text-4xl font-bold tracking-tight">Admin Login</div>
+    <div class="muted mt-1 text-sm">Only the depot team can add/update CHTs.</div>
+  </div>
+</div>
+{% endblock %}
+
+{% block content %}
+<div class="max-w-md mx-auto mt-10">
+  <div class="glass-strong p-6 sm:p-7 rd-26 card-hover">
+    {% if error %}
+      <div class="p-3 rd-22 bg-red-500/15 text-red-200 border border-red-500/25 mb-4">
+        {{ error }}
+      </div>
+    {% endif %}
+
+    <form method="post" action="/admin/login" class="space-y-4">
+      <input type="hidden" name="next" value="{{ next }}" />
+      <input type="hidden" name="entry" value="{{ entry or '' }}" />
+
+      <div>
+        <label class="muted text-sm" for="username">ID</label>
+        <input id="username" class="field mt-2" name="username" value="cht_mgt" required />
+      </div>
+
+      <div>
+        <label class="muted text-sm" for="password">Password</label>
+        <input id="password" class="field mt-2" name="password" type="password" required />
+      </div>
+
+      <div class="pt-2">
+        <button class="btn btn-primary w-full" type="submit">Login</button>
+      </div>
+
+      <div class="muted2 text-xs pt-2">
+        Public QR pages never require login. Admin page uses a private access link + credentials.
+      </div>
+    </form>
+  </div>
+</div>
+{% endblock %}
+
