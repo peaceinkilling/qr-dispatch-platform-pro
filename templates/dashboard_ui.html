@@ -818,6 +818,25 @@
           });
       }
 
+      function normalizeRouteLine(points, startLat, startLng, endLat, endLng) {
+        var line = Array.isArray(points)
+          ? points
+              .filter(function (p) {
+                return Array.isArray(p) && p.length >= 2 && Number.isFinite(Number(p[0])) && Number.isFinite(Number(p[1]));
+              })
+              .map(function (p) {
+                return [Number(p[0]), Number(p[1])];
+              })
+          : [];
+        if (line.length < 2) return [[startLat, startLng], [endLat, endLng]];
+        var same = function (a, b) {
+          return Math.abs(a[0] - b[0]) < 1e-5 && Math.abs(a[1] - b[1]) < 1e-5;
+        };
+        if (!same(line[0], [startLat, startLng])) line.unshift([startLat, startLng]);
+        if (!same(line[line.length - 1], [endLat, endLng])) line.push([endLat, endLng]);
+        return line;
+      }
+
       var routePolylinesPromise = null;
       function getDashboardRoutePolylines() {
         if (!routePolylinesPromise) {
@@ -836,12 +855,7 @@
         markers.forEach(function (m, idx) {
           if (!Number.isFinite(m.lat) || !Number.isFinite(m.lng)) return;
           allPoints.push([m.lat, m.lng]);
-          var fallback = [
-            [depotLat, depotLng],
-            [m.lat, m.lng],
-          ];
-          var lineCoords =
-            polylines[idx] && polylines[idx].length >= 2 ? polylines[idx] : fallback;
+          var lineCoords = normalizeRouteLine(polylines[idx], depotLat, depotLng, m.lat, m.lng);
 
           if (map) {
             L.polyline(lineCoords, {
@@ -935,12 +949,7 @@
             markers.forEach(function (m, idx) {
               if (!Number.isFinite(m.lat) || !Number.isFinite(m.lng)) return;
               fsAllPoints.push([m.lat, m.lng]);
-              var fallback = [
-                [depotLat, depotLng],
-                [m.lat, m.lng],
-              ];
-              var lineCoords =
-                polylines[idx] && polylines[idx].length >= 2 ? polylines[idx] : fallback;
+              var lineCoords = normalizeRouteLine(polylines[idx], depotLat, depotLng, m.lat, m.lng);
               L.polyline(lineCoords, {
                 color: "#38bdf8",
                 weight: 3,

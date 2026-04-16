@@ -19,7 +19,7 @@
 {% set _skin_i = ((item.public_token|default(''))|length) % 4 %}
 {% set hero_skins = ['wave', 'aurora', 'dusk', 'reef'] %}
 <div class="detail-pixel-scope">
-  <div id="detailRoot" class="detail-preview detail-pixel-surface p-4 sm:p-6 lg:p-8 mb-4 detail-pixel-reveal" data-qr="{{ qr_url }}" data-vehicle="{{ item.vehicle_number | e }}">
+  <div id="detailRoot" class="detail-preview detail-pixel-surface p-4 sm:p-6 lg:p-8 mb-4 detail-pixel-reveal" data-qr="{{ qr_url }}" data-vehicle="{{ item.vehicle_number | e }}" data-dispatch-raw="{{ item.dispatch_date | e }}" data-eta-raw="{{ item.eta_date | e }}" data-status="{{ item.status | e }}">
     <!-- Hero: vehicle + scan context -->
     <div class="detail-hero detail-hero--{{ hero_skins[_skin_i] }} pb-5 border-b detail-hero-divider">
       <div class="detail-pixel-vehicle detail-pixel-vehicle--{{ hero_skins[_skin_i] }}">{{ item.vehicle_number }}</div>
@@ -157,7 +157,7 @@
             class="btn btn-ghost detail-pixel-btn w-full"
             id="printQrBtn"
             data-qr="{{ qr_url }}"
-            data-vehicle="{{ item.vehicle_number | e }}"
+            data-vehicle="{{ item.vehicle_number | e }}" data-dispatch-raw="{{ item.dispatch_date | e }}" data-eta-raw="{{ item.eta_date | e }}" data-status="{{ item.status | e }}"
           >
             Print QR
           </button>
@@ -551,6 +551,69 @@
       }
       const routeLineLatLngs = readDetailRouteLatLngs();
 
+      function normalizeRouteLine(points, startLat, startLng, endLat, endLng) {
+        const line = Array.isArray(points) ? points.filter((p) => Array.isArray(p) && p.length >= 2 && Number.isFinite(Number(p[0])) && Number.isFinite(Number(p[1]))).map((p) => [Number(p[0]), Number(p[1])]) : [];
+        if (line.length < 2) {
+          return [[startLat, startLng], [endLat, endLng]];
+        }
+        const same = (a, b) => Math.abs(a[0] - b[0]) < 1e-5 && Math.abs(a[1] - b[1]) < 1e-5;
+        if (!same(line[0], [startLat, startLng])) line.unshift([startLat, startLng]);
+        if (!same(line[line.length - 1], [endLat, endLng])) line.push([endLat, endLng]);
+        return line;
+      }
+
+      function parseMaybeDate(raw) {
+        if (!raw) return null;
+        const t = Date.parse(String(raw).replace(" ", "T"));
+        return Number.isFinite(t) ? new Date(t) : null;
+      }
+
+      function estimateLocationOnRoute(line, dispatchRaw, etaRaw, statusRaw) {
+        if (!Array.isArray(line) || line.length < 2) return null;
+        const status = String(statusRaw || "").trim().toLowerCase();
+        if (status === "delivered") {
+          return { point: line[line.length - 1], progress: 1 };
+        }
+        const d0 = parseMaybeDate(dispatchRaw);
+        const d1 = parseMaybeDate(etaRaw);
+        if (!d0 || !d1) return null;
+        const totalMs = d1.getTime() - d0.getTime();
+        if (!Number.isFinite(totalMs) || totalMs <= 0) return null;
+        const now = Date.now();
+        const progress = Math.max(0, Math.min(1, (now - d0.getTime()) / totalMs));
+        if (progress <= 0) return { point: line[0], progress: 0 };
+        if (progress >= 1) return { point: line[line.length - 1], progress: 1 };
+
+        const segLens = [];
+        let total = 0;
+        for (let i = 0; i < line.length - 1; i++) {
+          const a = line[i];
+          const b = line[i + 1];
+          const dx = b[1] - a[1];
+          const dy = b[0] - a[0];
+          const len = Math.hypot(dx, dy);
+          segLens.push(len);
+          total += len;
+        }
+        if (total <= 0) return { point: line[0], progress: 0 };
+        let target = total * progress;
+        for (let i = 0; i < segLens.length; i++) {
+          const len = segLens[i];
+          if (target > len) {
+            target -= len;
+            continue;
+          }
+          const a = line[i];
+          const b = line[i + 1];
+          const r = len > 0 ? target / len : 0;
+          return {
+            point: [a[0] + (b[0] - a[0]) * r, a[1] + (b[1] - a[1]) * r],
+            progress,
+          };
+        }
+        return { point: line[line.length - 1], progress: 1 };
+      }
+
       // Initialize the real location map (Leaflet).
       const locationMap = document.getElementById("locationMap");
       let inlineMap = null;
@@ -606,14 +669,13 @@
             .addTo(inlineMap)
             .bindPopup("Depot ({{ depot_name | e }}) — Our location");
 
-          // Driving route (OSRM) when available, else straight segment
-          const previewLine =
-            routeLineLatLngs && routeLineLatLngs.length >= 2
-              ? routeLineLatLngs
-              : [
-                  [depotLat, depotLng],
-                  [lat, lng],
-                ];
+          const detailRootMeta = document.getElementById("detailRoot");
+          const dispatchRaw = detailRootMeta && detailRootMeta.getAttribute("data-dispatch-raw");
+          const etaRaw = detailRootMeta && detailRootMeta.getAttribute("data-eta-raw");
+          const statusRaw = detailRootMeta && detailRootMeta.getAttribute("data-status");
+
+          // Driving route (OSRM) when available, else straight segment. Always anchor exact endpoints.
+          const previewLine = normalizeRouteLine(routeLineLatLngs, depotLat, depotLng, lat, lng);
           L.polyline(previewLine, { color: "#38bdf8", weight: 6, opacity: 0.95 }).addTo(inlineMap);
           const locFb = document.getElementById("locationFallbackLine");
           if (locFb) locFb.style.display = "none";
@@ -634,6 +696,20 @@
                 ", " +
                 lng.toFixed(3)
             );
+
+          const estimate = estimateLocationOnRoute(previewLine, dispatchRaw, etaRaw, statusRaw);
+          if (estimate && Array.isArray(estimate.point) && estimate.point.length >= 2) {
+            const pct = Math.round(Math.max(0, Math.min(1, Number(estimate.progress || 0))) * 100);
+            L.circleMarker(estimate.point, {
+              radius: 6,
+              color: "#f43f5e",
+              weight: 2,
+              fillColor: "#fb7185",
+              fillOpacity: 0.95,
+            })
+              .addTo(inlineMap)
+              .bindPopup("Estimated CHT location<br/>Based on dispatch time and ETA<br/>Progress: " + pct + "%");
+          }
 
           const bounds = L.latLngBounds(previewLine);
           inlineMap.fitBounds(bounds, { padding: [18, 18], maxZoom: 10 });
@@ -684,15 +760,26 @@
                 const fsBar = document.getElementById("fullscreenBasemapBar");
                 attachBasemapToMap(fullscreenMap, fsBar, "streets");
                 L.circleMarker([depotLat, depotLng], { radius: 10, color: "#f59e0b", weight: 3, fillColor: "#f59e0b", fillOpacity: 0.95 }).addTo(fullscreenMap).bindPopup("Depot ({{ depot_name | e }})");
-                const fsLine =
-                  routeLineLatLngs && routeLineLatLngs.length >= 2
-                    ? routeLineLatLngs
-                    : [
-                        [depotLat, depotLng],
-                        [lat, lng],
-                      ];
+                const detailRootMeta = document.getElementById("detailRoot");
+                const dispatchRaw = detailRootMeta && detailRootMeta.getAttribute("data-dispatch-raw");
+                const etaRaw = detailRootMeta && detailRootMeta.getAttribute("data-eta-raw");
+                const statusRaw = detailRootMeta && detailRootMeta.getAttribute("data-status");
+                const fsLine = normalizeRouteLine(routeLineLatLngs, depotLat, depotLng, lat, lng);
                 L.polyline(fsLine, { color: "#38bdf8", weight: 7, opacity: 0.98 }).addTo(fullscreenMap);
                 L.circleMarker([lat, lng], { radius: 9, color: "#34d399", weight: 3, fillColor: "#34d399", fillOpacity: 0.9 }).addTo(fullscreenMap).bindPopup(locationMap.getAttribute("data-name") || "");
+                const fsEstimate = estimateLocationOnRoute(fsLine, dispatchRaw, etaRaw, statusRaw);
+                if (fsEstimate && Array.isArray(fsEstimate.point) && fsEstimate.point.length >= 2) {
+                  const pct = Math.round(Math.max(0, Math.min(1, Number(fsEstimate.progress || 0))) * 100);
+                  L.circleMarker(fsEstimate.point, {
+                    radius: 7,
+                    color: "#f43f5e",
+                    weight: 2,
+                    fillColor: "#fb7185",
+                    fillOpacity: 0.95,
+                  })
+                    .addTo(fullscreenMap)
+                    .bindPopup("Estimated CHT location<br/>Based on dispatch time and ETA<br/>Progress: " + pct + "%");
+                }
                 // Hide only the fallback line once Leaflet draws.
                 const fbLine = document.getElementById("detailMapFallbackLine");
                 if (fbLine) fbLine.style.display = "none";
@@ -797,4 +884,7 @@
     })();
   </script>
 {% endblock %}
+
+
+
 
