@@ -3573,7 +3573,7 @@ html.theme-light .detail-pixel-scope .detail-meta-cell:hover {
   align-items: flex-end;
   justify-content: space-between;
   gap: 0.25rem;
-  height: 140px;
+  height: 152px;
   padding: 0.25rem 0 0;
 }
 
@@ -3657,7 +3657,105 @@ html.theme-light .detail-pixel-scope .detail-meta-cell:hover {
 
 .cht-red-pin-svg {
   display: block;
-  filter: drop-shadow(0 3px 6px rgba(0, 0, 0, 0.4));
+  filter: drop-shadow(0 2px 4px rgba(0, 0, 0, 0.38));
+}
+
+.cht-red-pin-svg--sm {
+  filter: drop-shadow(0 1px 3px rgba(0, 0, 0, 0.35));
+}
+
+.cht-depot-dot--compact .cht-depot-dot__ring {
+  width: 16px;
+  height: 16px;
+  border-width: 2px;
+}
+
+.cht-depot-dot--compact .cht-depot-dot__core {
+  width: 8px;
+  height: 8px;
+}
+
+.funds-plan-card {
+  padding: 1rem 1.1rem;
+  border-radius: 16px;
+  background: rgba(2, 6, 23, 0.55);
+  border: 1px solid rgba(56, 189, 248, 0.12);
+}
+
+.funds-plan-card-kicker {
+  font-size: 0.62rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.07em;
+  color: #94a3b8;
+}
+
+.funds-plan-card-value {
+  margin-top: 0.4rem;
+  font-size: 1.25rem;
+  font-weight: 800;
+  color: #f8fafc;
+}
+
+.funds-plan-card-meta {
+  margin-top: 0.35rem;
+  font-size: 0.7rem;
+  line-height: 1.35;
+  color: rgba(148, 163, 184, 0.95);
+}
+
+.funds-plan-note {
+  font-size: 0.8rem;
+  line-height: 1.45;
+  color: rgba(186, 230, 253, 0.92);
+  padding: 0.75rem 1rem;
+  border-radius: 14px;
+  background: rgba(30, 58, 138, 0.25);
+  border: 1px solid rgba(99, 102, 241, 0.22);
+}
+
+.funds-hbar-track--q {
+  height: 10px;
+}
+
+.funds-hbar-fill--q {
+  background: linear-gradient(90deg, #22d3ee, #818cf8);
+}
+
+.funds-month-col.funds-month--peak .funds-month-bar {
+  box-shadow: 0 0 0 1px rgba(251, 191, 36, 0.55), 0 4px 14px rgba(245, 158, 11, 0.2);
+}
+
+.funds-month-col.funds-month--quiet .funds-month-bar {
+  opacity: 0.78;
+  box-shadow: 0 0 0 1px rgba(52, 211, 153, 0.35);
+}
+
+.funds-month-col.funds-month--mid .funds-month-bar {
+  box-shadow: 0 0 0 1px rgba(148, 163, 184, 0.2);
+}
+
+.funds-month-vol {
+  margin-top: 0.15rem;
+  font-size: 0.58rem;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  color: #64748b;
+}
+
+html.theme-light .funds-plan-card {
+  background: rgba(255, 255, 255, 0.82);
+  border-color: rgba(14, 165, 233, 0.15);
+}
+
+html.theme-light .funds-plan-card-value {
+  color: #0f172a;
+}
+
+html.theme-light .funds-plan-note {
+  background: rgba(224, 242, 254, 0.9);
+  border-color: rgba(14, 165, 233, 0.2);
+  color: #0c4a6e;
 }
 
 html.theme-light .funds-hero {

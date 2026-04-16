@@ -11,7 +11,7 @@ import smtplib
 import hashlib
 from contextlib import closing
 import csv
-from datetime import datetime, timedelta, time
+from datetime import date, datetime, timedelta, time
 from pathlib import Path
 from typing import Any, Optional
 from email.message import EmailMessage
@@ -2011,12 +2011,18 @@ def dashboard(
                 ).fetchone()[0],
             }
         hero = rows[0] if rows else None
+        map_marker_count = sum(
+            1
+            for r in rows
+            if r.get("station_lat") is not None and r.get("station_lng") is not None
+        )
         return templates.TemplateResponse(
             request,
             "dashboard_ui.html",
             {
                 "request": request,
                 "dispatches": rows,
+                "map_marker_count": map_marker_count,
                 "q": q or "",
                 "status": status or "All",
                 "destination": destination or "",
@@ -2496,6 +2502,28 @@ def funds_dashboard(
             (y0, y1),
         ).fetchall()
 
+        py0, py1 = _funds_year_window(y - 1)
+        prow = conn.execute(
+            f"""
+            SELECT COALESCE(SUM(cht_cost_amount), 0) AS s
+            FROM {DISPATCH_TABLE}
+            WHERE dispatch_date >= ? AND dispatch_date < ?
+            """,
+            (py0, py1),
+        ).fetchone()
+        prior_year_spent = float(prow["s"] if prow else 0.0)
+
+        vol_raw = conn.execute(
+            f"""
+            SELECT CAST(strftime('%m', dispatch_date) AS INTEGER) AS m, COUNT(*) AS c
+            FROM {DISPATCH_TABLE}
+            WHERE dispatch_date >= ? AND dispatch_date < ?
+            GROUP BY m
+            ORDER BY m
+            """,
+            (y0, y1),
+        ).fetchall()
+
         sql = f"""
             SELECT public_token, icn_number, vehicle_number, destination, destination_pincode,
                    dispatch_date, status, cht_cost_amount
@@ -2612,6 +2640,80 @@ def funds_dashboard(
     for b in monthly_bars:
         b["h_pct"] = min(100.0, (b["amount"] / max_month) * 100.0)
 
+    by_vol: dict[int, int] = {}
+    for r in vol_raw:
+        m = r["m"]
+        if m is not None:
+            by_vol[int(m)] = int(r["c"] or 0)
+    for b in monthly_bars:
+        b["dispatch_count"] = by_vol.get(int(b["m"]), 0)
+
+    flat_month_avg = spent / 12.0 if spent > 0 else 0.0
+    for b in monthly_bars:
+        amt = float(b["amount"])
+        if flat_month_avg <= 0:
+            b["pace_cls"] = "funds-month--none"
+            b["pace_label"] = ""
+        elif amt <= 0:
+            b["pace_cls"] = "funds-month--none"
+            b["pace_label"] = "No spend"
+        elif amt >= flat_month_avg * 1.35:
+            b["pace_cls"] = "funds-month--peak"
+            b["pace_label"] = "Busy"
+        elif amt <= flat_month_avg * 0.5:
+            b["pace_cls"] = "funds-month--quiet"
+            b["pace_label"] = "Easy"
+        else:
+            b["pace_cls"] = "funds-month--mid"
+            b["pace_label"] = "Typical"
+
+    pos_month_amts = [float(b["amount"]) for b in monthly_bars if float(b["amount"]) > 0]
+    spend_cv_pct: Optional[float] = None
+    if len(pos_month_amts) >= 2:
+        m_sp = sum(pos_month_amts) / len(pos_month_amts)
+        if m_sp > 0:
+            var_sp = sum((x - m_sp) ** 2 for x in pos_month_amts) / len(pos_month_amts)
+            spend_cv_pct = round((var_sp**0.5) / m_sp * 100.0, 1)
+
+    yoy_change_pct: Optional[float] = None
+    if prior_year_spent > 0:
+        yoy_change_pct = round((spent - prior_year_spent) / prior_year_spent * 100.0, 1)
+
+    quarters_out: list[dict[str, Any]] = []
+    for qn, (ma, mb) in enumerate([(1, 3), (4, 6), (7, 9), (10, 12)], start=1):
+        qsum = sum(by_month.get(mi, 0.0) for mi in range(ma, mb + 1))
+        quarters_out.append({"q": qn, "label": f"Q{qn}", "amount": qsum, "amount_display": f"₹{qsum:,.0f}"})
+    max_q = max((q["amount"] for q in quarters_out), default=0.0) or 1.0
+    for q in quarters_out:
+        q["w_pct"] = min(100.0, (q["amount"] / max_q) * 100.0)
+
+    forecast_projected: Optional[float] = None
+    forecast_vs_budget_pct: Optional[float] = None
+    forecast_note = ""
+    is_forecast_active = y == date.today().year and spent > 0
+    if is_forecast_active:
+        m_now = date.today().month
+        ytd_spend = sum(by_month.get(mi, 0.0) for mi in range(1, m_now + 1))
+        if m_now >= 1 and ytd_spend > 0:
+            run_rate = ytd_spend / float(m_now)
+            forecast_projected = run_rate * 12.0
+            if allocated > 0:
+                forecast_vs_budget_pct = round((forecast_projected / allocated) * 100.0, 1)
+            if allocated > 0 and forecast_projected > allocated * 1.02:
+                forecast_note = (
+                    f"At the current {m_now}-month run rate, projected year spend is about "
+                    f"₹{forecast_projected:,.0f} ({forecast_vs_budget_pct}% of allocation). Consider pacing or budget."
+                )
+            elif allocated > 0 and forecast_projected < allocated * 0.75:
+                forecast_note = (
+                    f"Run rate suggests a soft year (~₹{forecast_projected:,.0f}); headroom for extra CHT or contingencies."
+                )
+            else:
+                forecast_note = (
+                    f"Linear projection from YTD: ~₹{forecast_projected:,.0f} for the full year "
+                    f"({forecast_vs_budget_pct or 0:.0f}% of allocation if set)."
+                )
+
     top_destinations: list[dict[str, Any]] = []
     max_dest = max((float(r["s"] or 0) for r in top_dest_raw), default=0.0) or 1.0
     for r in top_dest_raw:
@@ -2656,6 +2758,19 @@ def funds_dashboard(
             "has_spend_breakdown": spend_total_st > 0,
             "monthly_bars": monthly_bars,
             "top_destinations": top_destinations,
+            "prior_year_spent": prior_year_spent,
+            "prior_year_spent_display": f"₹{prior_year_spent:,.2f}",
+            "yoy_change_pct": yoy_change_pct,
+            "yoy_change_display": (f"{yoy_change_pct:+.1f}%" if yoy_change_pct is not None else "—"),
+            "spend_cv_pct": spend_cv_pct,
+            "quarters_out": quarters_out,
+            "forecast_projected": forecast_projected,
+            "forecast_projected_display": (
+                f"₹{forecast_projected:,.0f}" if forecast_projected is not None else "—"
+            ),
+            "forecast_vs_budget_pct": forecast_vs_budget_pct,
+            "forecast_note": forecast_note,
+            "is_forecast_active": is_forecast_active,
             "q": q,
             "status": status,
             "df": df,

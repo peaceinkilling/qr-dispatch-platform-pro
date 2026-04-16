@@ -141,14 +141,75 @@
     </div>
   </section>
 
+  <div class="glass-strong p-4 sm:p-6 mb-6 rd-22 reveal funds-panel">
+    <div class="funds-panel-title mb-1">Planning &amp; forecast</div>
+    <p class="muted2 text-sm mb-5 max-w-3xl">
+      Year-wide signals (not affected by table filters). Use busy vs easy months to plan cash flow; volatility shows how uneven spend is across months.
+    </p>
+    <div class="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-4">
+      <div class="funds-plan-card">
+        <div class="funds-plan-card-kicker">Prior year ({{ year - 1 }})</div>
+        <div class="funds-plan-card-value">{{ prior_year_spent_display }}</div>
+        <div class="funds-plan-card-meta">Recorded cost total</div>
+      </div>
+      <div class="funds-plan-card">
+        <div class="funds-plan-card-kicker">YoY change (cost)</div>
+        <div class="funds-plan-card-value {% if yoy_change_pct is not none and yoy_change_pct > 5 %}text-amber-200{% elif yoy_change_pct is not none and yoy_change_pct < -5 %}text-emerald-200{% endif %}">{{ yoy_change_display }}</div>
+        <div class="funds-plan-card-meta">Vs {{ year - 1 }} · {% if yoy_change_pct is none %}no prior cost baseline{% else %}% change vs last year’s total{% endif %}</div>
+      </div>
+      <div class="funds-plan-card">
+        <div class="funds-plan-card-kicker">Monthly volatility</div>
+        <div class="funds-plan-card-value">{% if spend_cv_pct is not none %}{{ spend_cv_pct }}%{% else %}—{% endif %}</div>
+        <div class="funds-plan-card-meta">Coef. of variation on months with spend (spread vs average)</div>
+      </div>
+      <div class="funds-plan-card">
+        <div class="funds-plan-card-kicker">{% if is_forecast_active %}Year-end hint{% else %}Projection{% endif %}</div>
+        <div class="funds-plan-card-value">{{ forecast_projected_display }}</div>
+        <div class="funds-plan-card-meta">
+          {% if is_forecast_active %}
+            Linear run-rate from YTD
+          {% elif year == today_year %}
+            No recorded spend yet this year — projection appears once costs exist.
+          {% elif spent > 0 %}
+            Run-rate is only shown for the current calendar year.
+          {% else %}
+            No spend recorded for {{ year }}.
+          {% endif %}
+          {% if forecast_vs_budget_pct is not none %} · {{ forecast_vs_budget_pct }}% of allocation{% endif %}
+        </div>
+      </div>
+    </div>
+    {% if forecast_note %}
+      <p class="funds-plan-note mt-4">{{ forecast_note }}</p>
+    {% endif %}
+    <div class="mt-6">
+      <div class="funds-panel-title mb-3">Quarterly spend ({{ year }})</div>
+      <div class="space-y-2">
+        {% for q in quarters_out %}
+          <div>
+            <div class="flex justify-between text-xs mb-1">
+              <span class="text-white/85 font-semibold">{{ q.label }}</span>
+              <span class="font-mono text-sky-200">{{ q.amount_display }}</span>
+            </div>
+            <div class="funds-hbar-track funds-hbar-track--q">
+              <div class="funds-hbar-fill funds-hbar-fill--q" style="width: {{ q.w_pct }}%;"></div>
+            </div>
+          </div>
+        {% endfor %}
+      </div>
+    </div>
+  </div>
+
   <div class="grid grid-cols-1 lg:grid-cols-2 gap-4 mb-6">
     <div class="glass-strong p-4 sm:p-5 rd-22 reveal funds-panel">
-      <div class="funds-panel-title mb-4">Spend by month ({{ year }})</div>
+      <div class="funds-panel-title mb-1">Spend by month ({{ year }})</div>
+      <p class="muted2 text-xs mb-3">Bar height = cost. Border tint: <span class="text-amber-200/90">Busy</span> &gt;35% above flat monthly avg · <span class="text-slate-400">Typical</span> · <span class="text-emerald-200/90">Easy</span> low spend. Numbers under each month = dispatch count (volume).</p>
       <div class="funds-month-chart" role="img" aria-label="Monthly spend bars">
         {% for mb in monthly_bars %}
-          <div class="funds-month-col" title="{{ mb.label }}: {{ mb.amount_short }}">
+          <div class="funds-month-col {{ mb.pace_cls }}" title="{{ mb.label }}: {{ mb.amount_short }}{% if mb.pace_label %} · {{ mb.pace_label }}{% endif %} · {{ mb.dispatch_count }} dispatches">
             <div class="funds-month-bar" style="height: {{ mb.h_pct }}%;"></div>
             <span class="funds-month-lbl">{{ mb.label }}</span>
+            <span class="funds-month-vol">{{ mb.dispatch_count }}</span>
           </div>
         {% endfor %}
       </div>
