@@ -336,8 +336,8 @@ CAPACITY_WEIGHT_KG = 5000.0
 
 # Depot: Banar, Rajasthan (PIN 342027, near Jodhpur).
 DEPOT_PINCODE = "342027"
-DEPOT_LAT = 26.32535  # fallback if pincode lookup fails
-DEPOT_LNG = 73.2401
+DEPOT_LAT = 26.3412647  # fallback if pincode lookup fails (aligned with map pin)
+DEPOT_LNG = 73.1539759
 DEPOT_NAME = "Banar"
 
 
@@ -1187,12 +1187,16 @@ def init_db() -> None:
             );
             """
         )
-        # Ensure depot (Banar, PIN 342027) is always resolvable.
-        # Coordinates aligned with IndiaMapia / common gazetteer listings for Banar SO (verify vs Google if needed).
+        # Ensure depot (Banar, PIN 342027) is always resolvable; keep coords in sync with depot map pin.
         conn.execute(
             f"""
-            INSERT OR IGNORE INTO {PIN_CODES_TABLE} (pincode, place_name, state_name, lat, lng)
-            VALUES ('342027', 'Banar', 'Rajasthan', 26.32535, 73.2401)
+            INSERT INTO {PIN_CODES_TABLE} (pincode, place_name, state_name, lat, lng)
+            VALUES ('342027', 'Banar', 'Rajasthan', 26.3412647, 73.1539759)
+            ON CONFLICT(pincode) DO UPDATE SET
+              place_name = excluded.place_name,
+              state_name = excluded.state_name,
+              lat = excluded.lat,
+              lng = excluded.lng
             """
         )
 
@@ -2436,6 +2440,62 @@ def funds_dashboard(
         spent = float(spent_row["s"] or 0)
         n_costed = int(spent_row["n"] or 0)
 
+        n_total_year = int(
+            conn.execute(
+                f"""
+                SELECT COUNT(*) FROM {DISPATCH_TABLE}
+                WHERE dispatch_date >= ? AND dispatch_date < ?
+                """,
+                (y0, y1),
+            ).fetchone()[0]
+        )
+
+        status_count_raw = conn.execute(
+            f"""
+            SELECT status, COUNT(*) AS c
+            FROM {DISPATCH_TABLE}
+            WHERE dispatch_date >= ? AND dispatch_date < ?
+            GROUP BY status
+            """,
+            (y0, y1),
+        ).fetchall()
+
+        status_spend_raw = conn.execute(
+            f"""
+            SELECT status, COALESCE(SUM(cht_cost_amount), 0) AS s
+            FROM {DISPATCH_TABLE}
+            WHERE dispatch_date >= ? AND dispatch_date < ? AND cht_cost_amount IS NOT NULL
+            GROUP BY status
+            """,
+            (y0, y1),
+        ).fetchall()
+
+        month_raw = conn.execute(
+            f"""
+            SELECT CAST(strftime('%m', dispatch_date) AS INTEGER) AS m,
+                   COALESCE(SUM(cht_cost_amount), 0) AS s
+            FROM {DISPATCH_TABLE}
+            WHERE dispatch_date >= ? AND dispatch_date < ? AND cht_cost_amount IS NOT NULL
+            GROUP BY m
+            ORDER BY m
+            """,
+            (y0, y1),
+        ).fetchall()
+
+        top_dest_raw = conn.execute(
+            f"""
+            SELECT COALESCE(NULLIF(TRIM(destination), ''), '(No destination)') AS d,
+                   COALESCE(SUM(cht_cost_amount), 0) AS s,
+                   COUNT(*) AS n
+            FROM {DISPATCH_TABLE}
+            WHERE dispatch_date >= ? AND dispatch_date < ? AND cht_cost_amount IS NOT NULL
+            GROUP BY d
+            ORDER BY s DESC
+            LIMIT 8
+            """,
+            (y0, y1),
+        ).fetchall()
+
         sql = f"""
             SELECT public_token, icn_number, vehicle_number, destination, destination_pincode,
                    dispatch_date, status, cht_cost_amount
@@ -2475,6 +2535,97 @@ def funds_dashboard(
 
     avg_txt = f"₹{(spent / n_costed):,.2f}" if n_costed else "—"
 
+    coverage_pct = (n_costed / n_total_year * 100.0) if n_total_year else 0.0
+
+    if allocated > 0:
+        used_vs_budget_pct = min(100.0, (spent / allocated) * 100.0)
+        over_budget_pct = max(0.0, ((spent - allocated) / allocated) * 100.0) if spent > allocated else 0.0
+        is_over_budget = spent > allocated
+    else:
+        used_vs_budget_pct = 0.0
+        over_budget_pct = 0.0
+        is_over_budget = False
+
+    status_colors = {
+        "On Route": "#10b981",
+        "Delayed": "#f59e0b",
+        "Delivered": "#6366f1",
+    }
+    status_order = ["On Route", "Delayed", "Delivered"]
+    st_counts = {str(r["status"]): int(r["c"]) for r in status_count_raw}
+    total_st = sum(st_counts.values()) or 0
+    status_mix: list[dict[str, Any]] = []
+    for st in status_order:
+        c = st_counts.get(st, 0)
+        pct = (c / total_st * 100.0) if total_st else 0.0
+        status_mix.append(
+            {
+                "status": st,
+                "count": c,
+                "pct": round(pct, 1),
+                "color": status_colors.get(st, "#94a3b8"),
+            }
+        )
+
+    st_spend = {str(r["status"]): float(r["s"] or 0) for r in status_spend_raw}
+    spend_total_st = sum(st_spend.values()) or 0.0
+    status_spend_segments: list[dict[str, Any]] = []
+    donut_parts: list[str] = []
+    cum = 0.0
+    for st in status_order:
+        amt = st_spend.get(st, 0.0)
+        pct = (amt / spend_total_st * 100.0) if spend_total_st > 0 else 0.0
+        col = status_colors.get(st, "#94a3b8")
+        status_spend_segments.append(
+            {
+                "status": st,
+                "amount": amt,
+                "amount_display": f"₹{amt:,.2f}",
+                "pct": round(pct, 1),
+                "bar_pct": round(pct, 2),
+                "color": col,
+            }
+        )
+        if spend_total_st > 0 and pct > 0:
+            nxt = min(100.0, cum + pct)
+            donut_parts.append(f"{col} {cum:.4f}% {nxt:.4f}%")
+            cum = nxt
+    donut_spend_style = f"conic-gradient({', '.join(donut_parts)})" if donut_parts else "conic-gradient(#334155 0% 100%)"
+
+    by_month: dict[int, float] = {}
+    for r in month_raw:
+        m = r["m"]
+        if m is not None:
+            by_month[int(m)] = float(r["s"] or 0)
+    month_labels = ["J", "F", "M", "A", "M", "J", "J", "A", "S", "O", "N", "D"]
+    monthly_bars: list[dict[str, Any]] = []
+    for mi in range(1, 13):
+        monthly_bars.append(
+            {
+                "m": mi,
+                "label": month_labels[mi - 1],
+                "amount": by_month.get(mi, 0.0),
+                "amount_short": f"₹{by_month.get(mi, 0.0):,.0f}",
+            }
+        )
+    max_month = max((b["amount"] for b in monthly_bars), default=0.0) or 1.0
+    for b in monthly_bars:
+        b["h_pct"] = min(100.0, (b["amount"] / max_month) * 100.0)
+
+    top_destinations: list[dict[str, Any]] = []
+    max_dest = max((float(r["s"] or 0) for r in top_dest_raw), default=0.0) or 1.0
+    for r in top_dest_raw:
+        amt = float(r["s"] or 0)
+        top_destinations.append(
+            {
+                "name": str(r["d"])[:42],
+                "amount": amt,
+                "amount_display": f"₹{amt:,.2f}",
+                "n": int(r["n"] or 0),
+                "w_pct": min(100.0, (amt / max_dest) * 100.0),
+            }
+        )
+
     return templates.TemplateResponse(
         request,
         "funds_dashboard.html",
@@ -2486,6 +2637,7 @@ def funds_dashboard(
             "balance": balance,
             "n_costed": n_costed,
             "n_rows": len(rows_out),
+            "n_total_year": n_total_year,
             "budget_updated": budget_updated,
             "rows": rows_out,
             "allocated_display": f"₹{allocated:,.2f}",
@@ -2493,6 +2645,17 @@ def funds_dashboard(
             "spent_display": f"₹{spent:,.2f}",
             "balance_display": f"₹{balance:,.2f}",
             "avg_cost_display": avg_txt,
+            "coverage_pct": round(coverage_pct, 1),
+            "used_vs_budget_pct": round(used_vs_budget_pct, 1),
+            "over_budget_pct": round(over_budget_pct, 1),
+            "is_over_budget": is_over_budget,
+            "has_budget": allocated > 0,
+            "status_mix": status_mix,
+            "status_spend_segments": status_spend_segments,
+            "donut_spend_style": donut_spend_style,
+            "has_spend_breakdown": spend_total_st > 0,
+            "monthly_bars": monthly_bars,
+            "top_destinations": top_destinations,
             "q": q,
             "status": status,
             "df": df,

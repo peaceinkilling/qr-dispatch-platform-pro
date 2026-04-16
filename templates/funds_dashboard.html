@@ -3,54 +3,176 @@
 {% block title %}Funds summary — Dispatch QR{% endblock %}
 
 {% block header %}
-<div class="flex flex-col sm:flex-row sm:items-end sm:justify-between gap-4">
+<div class="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
   <div>
     <div class="title text-3xl sm:text-4xl font-bold tracking-tight">Funds summary</div>
-    <div class="muted mt-1 text-sm">Calendar-year view by dispatch date. CHT costs are never shown on the public page or main depot dashboard.</div>
+    <div class="muted mt-1 text-sm max-w-2xl">
+      Calendar-year totals by dispatch date. Charts use the full year; the table below respects your filters.
+    </div>
   </div>
-  <div class="flex flex-wrap gap-2">
+  <div class="flex flex-wrap items-center gap-2">
     <a href="/" class="btn btn-ghost">Dashboard</a>
-    <a href="/admin/funds" class="btn btn-primary">Summary</a>
     <a href="/admin/new" class="btn btn-ghost">New dispatch</a>
+    <form method="post" action="/admin/funds/lock" class="m-0">
+      <button type="submit" class="btn btn-ghost btn-sm">Lock funds view</button>
+    </form>
   </div>
 </div>
 {% endblock %}
 
 {% block content %}
-  <div class="glass-strong p-4 sm:p-5 mb-6 reveal">
-    <div class="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-4">
-      <div class="flex flex-wrap items-center gap-2">
-        <a href="/" class="btn btn-ghost btn-sm">Dashboard</a>
-        <a href="/admin/funds" class="btn btn-primary btn-sm">Summary</a>
-        <a href="/admin/new" class="btn btn-ghost btn-sm">New dispatch</a>
-      </div>
-      <form method="post" action="/admin/funds/lock" class="m-0">
-        <button type="submit" class="btn btn-ghost btn-sm">Lock funds view</button>
-      </form>
-    </div>
-  </div>
-
   {% if toast == "budget" %}
     <div class="mb-6 rounded-xl border border-emerald-500/30 bg-emerald-500/10 px-4 py-3 text-sm text-emerald-50">Annual allocation saved for {{ year }}.</div>
   {% endif %}
 
-  <div class="grid grid-cols-1 lg:grid-cols-3 gap-4 mb-6">
-    <div class="glass-strong p-4 sm:p-5 rd-22">
-      <div class="muted text-xs uppercase tracking-wide">Allocated ({{ year }})</div>
-      <div class="title text-2xl font-bold mt-2">{{ allocated_display }}</div>
-      {% if budget_updated %}
-        <div class="muted2 text-xs mt-2">Last set {{ budget_updated }}</div>
+  <section class="funds-hero glass-strong p-5 sm:p-7 mb-6 rd-26 reveal relative overflow-hidden">
+    <div class="funds-hero-glow" aria-hidden="true"></div>
+    <div class="relative z-[1] grid grid-cols-1 xl:grid-cols-12 gap-8">
+      <div class="xl:col-span-7 space-y-5">
+        <div class="flex flex-wrap items-end gap-3">
+          <span class="funds-hero-kicker">Year {{ year }}</span>
+          {% if is_over_budget %}
+            <span class="funds-pill funds-pill--danger">Over budget</span>
+          {% elif has_budget and used_vs_budget_pct >= 85 %}
+            <span class="funds-pill funds-pill--amber">High utilization</span>
+          {% elif has_budget %}
+            <span class="funds-pill funds-pill--ok">On track</span>
+          {% else %}
+            <span class="funds-pill funds-pill--muted">Set allocation</span>
+          {% endif %}
+        </div>
+        <div class="grid grid-cols-1 sm:grid-cols-3 gap-4">
+          <div class="funds-stat-card">
+            <div class="funds-stat-label">Allocated</div>
+            <div class="funds-stat-value">{{ allocated_display }}</div>
+            {% if budget_updated %}<div class="funds-stat-meta">Updated {{ budget_updated }}</div>{% endif %}
+          </div>
+          <div class="funds-stat-card">
+            <div class="funds-stat-label">Recorded spend</div>
+            <div class="funds-stat-value funds-stat-value--sky">{{ spent_display }}</div>
+            <div class="funds-stat-meta">{{ n_costed }} CHT with cost · {{ n_total_year }} dispatches in year</div>
+          </div>
+          <div class="funds-stat-card">
+            <div class="funds-stat-label">Balance</div>
+            <div class="funds-stat-value {% if balance < 0 %}funds-stat-value--danger{% endif %}">{{ balance_display }}</div>
+            <div class="funds-stat-meta">Avg (costed): {{ avg_cost_display }}</div>
+          </div>
+        </div>
+
+        <div>
+          <div class="flex justify-between text-xs muted mb-2">
+            <span>Budget utilization</span>
+            {% if has_budget %}
+              <span class="text-white/90 font-semibold">{{ used_vs_budget_pct }}% of allocation</span>
+            {% else %}
+              <span>—</span>
+            {% endif %}
+          </div>
+          {% if has_budget %}
+            <div class="funds-track {% if is_over_budget %}funds-track--danger{% endif %}">
+              <div class="funds-track-fill funds-track-fill--spent" style="width: {{ used_vs_budget_pct }}%;"></div>
+            </div>
+            <div class="flex justify-between text-[11px] muted2 mt-1.5">
+              <span>₹0</span>
+              <span>100% = {{ allocated_display }}</span>
+            </div>
+            {% if is_over_budget %}
+              <p class="text-rose-300 text-xs mt-2 font-medium">{{ over_budget_pct }}% above allocation — review or increase budget.</p>
+            {% endif %}
+          {% else %}
+            <p class="muted2 text-sm">Enter an annual allocation below to unlock utilization and forecasting bars.</p>
+          {% endif %}
+        </div>
+
+        <div>
+          <div class="flex justify-between text-xs muted mb-2">
+            <span>Data coverage</span>
+            <span class="text-white/90 font-semibold">{{ coverage_pct }}% CHT have a cost on file</span>
+          </div>
+          <div class="funds-track funds-track--soft">
+            <div class="funds-track-fill funds-track-fill--coverage" style="width: {{ coverage_pct }}%;"></div>
+          </div>
+        </div>
+      </div>
+
+      <div class="xl:col-span-5 grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-1 gap-5">
+        <div class="funds-panel">
+          <div class="funds-panel-title">Spend by status</div>
+          {% if has_spend_breakdown %}
+            <div class="funds-donut-wrap">
+              <div class="funds-donut" style="background: {{ donut_spend_style | e }};"></div>
+              <ul class="funds-donut-legend">
+                {% for seg in status_spend_segments %}
+                  {% if seg.pct > 0 %}
+                    <li>
+                      <span class="funds-dot" style="background: {{ seg.color }};"></span>
+                      <span>{{ seg.status }}</span>
+                      <span class="funds-legend-amt">{{ seg.amount_display }} ({{ seg.pct }}%)</span>
+                    </li>
+                  {% endif %}
+                {% endfor %}
+              </ul>
+            </div>
+          {% else %}
+            <p class="muted2 text-sm mt-2">No recorded costs yet for this year.</p>
+          {% endif %}
+        </div>
+        <div class="funds-panel">
+          <div class="funds-panel-title">Dispatch mix (volume)</div>
+          <div class="funds-stack-bar" role="img" aria-label="Share of dispatches by status">
+            {% for row in status_mix %}
+              {% if row.pct > 0 %}
+                <div class="funds-stack-seg" style="width: {{ row.pct }}%; background: {{ row.color }};" title="{{ row.status }}: {{ row.count }} ({{ row.pct }}%)"></div>
+              {% endif %}
+            {% endfor %}
+          </div>
+          <ul class="funds-mix-legend mt-3 space-y-1.5">
+            {% for row in status_mix %}
+              <li class="funds-mix-row">
+                <span class="funds-dot" style="background: {{ row.color }};"></span>
+                <span>{{ row.status }}</span>
+                <span class="funds-mix-count">{{ row.count }}</span>
+                <span class="funds-mix-pct">{{ row.pct }}%</span>
+              </li>
+            {% endfor %}
+          </ul>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <div class="grid grid-cols-1 lg:grid-cols-2 gap-4 mb-6">
+    <div class="glass-strong p-4 sm:p-5 rd-22 reveal funds-panel">
+      <div class="funds-panel-title mb-4">Spend by month ({{ year }})</div>
+      <div class="funds-month-chart" role="img" aria-label="Monthly spend bars">
+        {% for mb in monthly_bars %}
+          <div class="funds-month-col" title="{{ mb.label }}: {{ mb.amount_short }}">
+            <div class="funds-month-bar" style="height: {{ mb.h_pct }}%;"></div>
+            <span class="funds-month-lbl">{{ mb.label }}</span>
+          </div>
+        {% endfor %}
+      </div>
+    </div>
+    <div class="glass-strong p-4 sm:p-5 rd-22 reveal funds-panel">
+      <div class="funds-panel-title mb-4">Top destinations by recorded cost</div>
+      {% if top_destinations %}
+        <ul class="space-y-3">
+          {% for td in top_destinations %}
+            <li>
+              <div class="flex justify-between text-xs gap-2 mb-1">
+                <span class="text-white/90 truncate font-medium" title="{{ td.name }}">{{ td.name }}</span>
+                <span class="font-mono text-sky-200 shrink-0">{{ td.amount_display }}</span>
+              </div>
+              <div class="funds-hbar-track">
+                <div class="funds-hbar-fill" style="width: {{ td.w_pct }}%;"></div>
+              </div>
+              <div class="text-[11px] muted2 mt-0.5">{{ td.n }} cost line(s)</div>
+            </li>
+          {% endfor %}
+        </ul>
+      {% else %}
+        <p class="muted2 text-sm">No destination costs for this year yet.</p>
       {% endif %}
-    </div>
-    <div class="glass-strong p-4 sm:p-5 rd-22">
-      <div class="muted text-xs uppercase tracking-wide">Recorded spend</div>
-      <div class="title text-2xl font-bold mt-2">{{ spent_display }}</div>
-      <div class="muted2 text-xs mt-2">{{ n_costed }} CHT with a cost · {{ n_rows }} rows in table</div>
-    </div>
-    <div class="glass-strong p-4 sm:p-5 rd-22">
-      <div class="muted text-xs uppercase tracking-wide">Balance</div>
-      <div class="title text-2xl font-bold mt-2">{{ balance_display }}</div>
-      <div class="muted2 text-xs mt-2">Avg where cost set: {{ avg_cost_display }}</div>
     </div>
   </div>
 
@@ -115,8 +237,8 @@
 
   <div class="glass-strong p-0 overflow-hidden rd-22 card-hover reveal">
     <div class="px-4 sm:px-6 py-4 border-b border-white/10">
-      <h2 class="title text-lg font-bold">CHT costs ({{ year }})</h2>
-      <p class="muted2 text-sm mt-1">Dispatch date must fall in the selected year window. Costs are entered on create / edit dispatch.</p>
+      <h2 class="title text-lg font-bold">CHT costs (filtered)</h2>
+      <p class="muted2 text-sm mt-1">Rows reflect search and status filters; hero charts stay full-year.</p>
     </div>
     <div class="overflow-x-auto">
       <table class="w-full text-sm funds-table">

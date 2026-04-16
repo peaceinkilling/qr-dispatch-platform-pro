@@ -590,6 +590,30 @@
         });
       }
 
+      function createDepotStartDotIcon() {
+        return L.divIcon({
+          className: "cht-depot-dot-leaflet",
+          html:
+            '<div class="cht-depot-dot"><span class="cht-depot-dot__ring"></span><span class="cht-depot-dot__core"></span></div>',
+          iconSize: [24, 24],
+          iconAnchor: [12, 12],
+        });
+      }
+
+      function createGoogleRedDropPinIcon() {
+        return L.divIcon({
+          className: "cht-red-pin-leaflet",
+          html:
+            '<svg class="cht-red-pin-svg" viewBox="0 0 36 52" width="34" height="50" aria-hidden="true">' +
+            '<path fill="#EA4335" stroke="#B31412" stroke-width="1" d="M18 0C8.06 0 0 8.06 0 18c0 13.5 18 34 18 34s18-20.5 18-34C36 8.06 27.94 0 18 0z"/>' +
+            '<circle cx="18" cy="16" r="5" fill="#ffffff"/>' +
+            "</svg>",
+          iconSize: [34, 50],
+          iconAnchor: [17, 50],
+          popupAnchor: [0, -46],
+        });
+      }
+
       function parseMaybeDate(raw) {
         if (!raw) return null;
         const t = Date.parse(String(raw).replace(" ", "T"));
@@ -721,15 +745,9 @@
             createBasemapLayer("streets").addTo(inlineMap);
           }
 
-          L.circleMarker([depotLat, depotLng], {
-            radius: 8,
-            color: "#f59e0b",
-            weight: 3,
-            fillColor: "#f59e0b",
-            fillOpacity: 0.95,
-          })
+          L.marker([depotLat, depotLng], { icon: createDepotStartDotIcon(), zIndexOffset: 800 })
             .addTo(inlineMap)
-            .bindPopup("Depot ({{ depot_name | e }}) — Our location");
+            .bindPopup("Depot ({{ depot_name | e }}) — Start");
 
           const detailRootMeta = document.getElementById("detailRoot");
           const dispatchRaw = detailRootMeta && detailRootMeta.getAttribute("data-dispatch-raw");
@@ -742,21 +760,15 @@
           const locFb = document.getElementById("locationFallbackLine");
           if (locFb) locFb.style.display = "none";
 
-          L.circleMarker([lat, lng], {
-            radius: 7,
-            color: "#34d399",
-            weight: 3,
-            fillColor: "#34d399",
-            fillOpacity: 0.9,
-          })
+          L.marker([lat, lng], { icon: createGoogleRedDropPinIcon(), zIndexOffset: 600 })
             .addTo(inlineMap)
             .bindPopup(
               "Station/Location: " +
                 (locationMap.getAttribute("data-name") || "") +
                 "<br/>GPS: " +
-                lat.toFixed(3) +
+                lat.toFixed(5) +
                 ", " +
-                lng.toFixed(3)
+                lng.toFixed(5)
             );
 
           const estimate = estimateLocationOnRoute(previewLine, dispatchRaw, etaRaw, statusRaw);
@@ -818,14 +830,18 @@
                 fullscreenMap = L.map("detailMapFullscreen", { zoomControl: true, attributionControl: true, scrollWheelZoom: true });
                 const fsBar = document.getElementById("fullscreenBasemapBar");
                 attachBasemapToMap(fullscreenMap, fsBar, "streets");
-                L.circleMarker([depotLat, depotLng], { radius: 10, color: "#f59e0b", weight: 3, fillColor: "#f59e0b", fillOpacity: 0.95 }).addTo(fullscreenMap).bindPopup("Depot ({{ depot_name | e }})");
+                L.marker([depotLat, depotLng], { icon: createDepotStartDotIcon(), zIndexOffset: 800 })
+                  .addTo(fullscreenMap)
+                  .bindPopup("Depot ({{ depot_name | e }}) — Start");
                 const detailRootMeta = document.getElementById("detailRoot");
                 const dispatchRaw = detailRootMeta && detailRootMeta.getAttribute("data-dispatch-raw");
                 const etaRaw = detailRootMeta && detailRootMeta.getAttribute("data-eta-raw");
                 const statusRaw = detailRootMeta && detailRootMeta.getAttribute("data-status");
                 const fsLine = normalizeRouteLine(routeLineLatLngs, depotLat, depotLng, lat, lng);
                 L.polyline(fsLine, { color: "#38bdf8", weight: 7, opacity: 0.98 }).addTo(fullscreenMap);
-                L.circleMarker([lat, lng], { radius: 9, color: "#34d399", weight: 3, fillColor: "#34d399", fillOpacity: 0.9 }).addTo(fullscreenMap).bindPopup(locationMap.getAttribute("data-name") || "");
+                L.marker([lat, lng], { icon: createGoogleRedDropPinIcon(), zIndexOffset: 600 })
+                  .addTo(fullscreenMap)
+                  .bindPopup(locationMap.getAttribute("data-name") || "");
                 const fsEstimate = estimateLocationOnRoute(fsLine, dispatchRaw, etaRaw, statusRaw);
                 if (fsEstimate && Array.isArray(fsEstimate.point) && fsEstimate.point.length >= 2) {
                   const pct = Math.round(Math.max(0, Math.min(1, Number(fsEstimate.progress || 0))) * 100);
