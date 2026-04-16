@@ -725,7 +725,7 @@ def _osrm_driving_route_cached(key: tuple[float, float, float, float]) -> Option
     url = (
         f"{OSRM_BASE_URL}/route/v1/driving/"
         f"{lng1},{lat1};{lng2},{lat2}"
-        f"?overview=full&geometries=geojson&steps=false"
+        f"?overview=full&geometries=geojson&steps=false&alternatives=true&continue_straight=true"
     )
     req = urllib.request.Request(
         url,
@@ -739,7 +739,17 @@ def _osrm_driving_route_cached(key: tuple[float, float, float, float]) -> Option
         return None
     if body.get("code") != "Ok" or not body.get("routes"):
         return None
-    r0 = body["routes"][0]
+    routes = body.get("routes") or []
+    if not routes:
+        return None
+    # Pick the fastest route by duration (fallback to distance if needed).
+    r0 = min(
+        routes,
+        key=lambda r: (
+            float(r.get("duration") or 1e18),
+            float(r.get("distance") or 1e18),
+        ),
+    )
     dist_m = float(r0.get("distance") or 0.0)
     geom = r0.get("geometry") or {}
     coords = geom.get("coordinates") or []
@@ -754,6 +764,11 @@ def _osrm_driving_route_cached(key: tuple[float, float, float, float]) -> Option
         latlngs.append((lat_a, lng_a))
     if len(latlngs) < 2:
         return None
+    # Force exact endpoint anchoring to avoid visual "offset" from snapped road nodes.
+    if abs(latlngs[0][0] - lat1) > 1e-5 or abs(latlngs[0][1] - lng1) > 1e-5:
+        latlngs.insert(0, (lat1, lng1))
+    if abs(latlngs[-1][0] - lat2) > 1e-5 or abs(latlngs[-1][1] - lng2) > 1e-5:
+        latlngs.append((lat2, lng2))
     return (dist_m / 1000.0, tuple(latlngs))
 
 
@@ -798,6 +813,20 @@ def parse_dt(value: str) -> Optional[datetime]:
         except ValueError:
             continue
     return None
+
+
+def _validate_dispatch_timeline_or_400(dispatch_date: str, eta_date: str) -> None:
+    dispatch_dt = parse_dt(dispatch_date or "")
+    eta_dt = parse_dt(eta_date or "")
+    if not dispatch_dt:
+        raise HTTPException(status_code=400, detail="Invalid dispatch date/time.")
+    if not eta_dt:
+        raise HTTPException(status_code=400, detail="Invalid ETA date/time.")
+    # Business rule: entry is created only after CHT has dispatched.
+    if dispatch_dt > datetime.now():
+        raise HTTPException(status_code=400, detail="Dispatch date/time cannot be in the future.")
+    if eta_dt < dispatch_dt:
+        raise HTTPException(status_code=400, detail="ETA cannot be earlier than dispatch date/time.")
 
 
 def human_eta(value: str) -> str:
@@ -1440,6 +1469,36 @@ STATUS_SYNC_INTERVAL_SECONDS = 300
 _LAST_STATUS_SYNC_AT: Optional[datetime] = None
 
 
+def _normalize_future_dispatch_dates() -> None:
+    """
+    Safety cleanup: dispatches should never be stored in the future.
+    If older data contains future dispatch timestamps, clamp them to "now".
+    """
+    now = datetime.now().replace(microsecond=0)
+    now_iso = now.isoformat(sep=" ", timespec="seconds")
+    with closing(get_conn()) as conn:
+        rows = conn.execute(
+            f"SELECT id, dispatch_date, eta_date FROM {DISPATCH_TABLE}"
+        ).fetchall()
+        changed = False
+        for r in rows:
+            ddt = parse_dt(r["dispatch_date"] or "")
+            if not ddt or ddt <= now:
+                continue
+            eta = parse_dt(r["eta_date"] or "")
+            # Preserve a valid sequence: ETA should not be earlier than dispatch.
+            eta_out = now_iso
+            if eta and eta >= now:
+                eta_out = eta.isoformat(sep=" ", timespec="seconds")
+            conn.execute(
+                f"UPDATE {DISPATCH_TABLE} SET dispatch_date = ?, eta_date = ?, updated_at = ? WHERE id = ?",
+                (now_iso, eta_out, now_iso, r["id"]),
+            )
+            changed = True
+        if changed:
+            conn.commit()
+
+
 def sync_delayed_statuses() -> None:
     """
     Keep dispatch `status` consistent with ETA.
@@ -1451,6 +1510,7 @@ def sync_delayed_statuses() -> None:
     """
     global _LAST_STATUS_SYNC_AT
     now = datetime.now()
+    _normalize_future_dispatch_dates()
     # Always keep the statuses correct for the dashboard/public pages.
     # (We still keep the variable in case you want to tune later.)
     if STATUS_SYNC_INTERVAL_SECONDS and _LAST_STATUS_SYNC_AT is not None:
@@ -2007,6 +2067,7 @@ def create_consignment(
     nature_4: Optional[str] = Form(None),
 ):
     status = status if status in VALID_STATUSES else "On Route"
+    _validate_dispatch_timeline_or_400(dispatch_date, eta_date)
     token = secrets.token_urlsafe(12)
     now = datetime.utcnow().isoformat(timespec="seconds")
 
@@ -2095,6 +2156,7 @@ def update_dispatch(
     nature_4: Optional[str] = Form(None),
 ):
     status = status if status in VALID_STATUSES else "On Route"
+    _validate_dispatch_timeline_or_400(dispatch_date, eta_date)
     now = datetime.utcnow().isoformat(timespec="seconds")
 
     # Total weight from form only (not derived from per-package × count).

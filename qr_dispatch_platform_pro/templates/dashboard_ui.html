@@ -799,15 +799,21 @@
           slng +
           "," +
           slat +
-          "?overview=full&geometries=geojson&steps=false";
+          "?overview=full&geometries=geojson&steps=false&alternatives=true&continue_straight=true";
         return fetch(url)
           .then(function (res) {
             if (!res.ok) return null;
             return res.json();
           })
           .then(function (body) {
-            if (!body || body.code !== "Ok" || !body.routes || !body.routes[0] || !body.routes[0].geometry) return null;
-            var coords = body.routes[0].geometry.coordinates || [];
+            if (!body || body.code !== "Ok" || !body.routes || !body.routes.length) return null;
+            var best = body.routes[0];
+            for (var i = 1; i < body.routes.length; i++) {
+              var r = body.routes[i];
+              if (Number(r.duration || 1e18) < Number(best.duration || 1e18)) best = r;
+            }
+            if (!best || !best.geometry) return null;
+            var coords = best.geometry.coordinates || [];
             if (coords.length < 2) return null;
             return coords.map(function (c) {
               return [c[1], c[0]];
@@ -837,71 +843,76 @@
         return line;
       }
 
-      var routePolylinesPromise = null;
-      function getDashboardRoutePolylines() {
-        if (!routePolylinesPromise) {
-          routePolylinesPromise = Promise.all(
-            markers.map(function (m) {
-              if (!Number.isFinite(m.lat) || !Number.isFinite(m.lng)) return Promise.resolve(null);
-              return fetchDashboardOsrmPolyline(depotLat, depotLng, m.lat, m.lng);
-            })
-          );
-        }
-        return routePolylinesPromise;
+      function withTimeout(promise, ms) {
+        var timeout = new Promise(function (resolve) {
+          setTimeout(function () {
+            resolve(null);
+          }, ms);
+        });
+        return Promise.race([promise, timeout]);
       }
 
-      getDashboardRoutePolylines().then(function (polylines) {
+      function popupHtmlForMarker(m) {
+        const url = "/dispatch/" + m.token;
+        return (
+          '<div class="text-sm">' +
+          '<div class="font-semibold" style="color:#dbeafe">' +
+          m.vehicle +
+          "</div>" +
+          '<div style="color:#93c5fd">' +
+          m.label +
+          "</div>" +
+          '<div style="color:#a5b4fc;font-size:12px;margin-top:4px;">GPS: ' +
+          m.lat.toFixed(3) +
+          ", " +
+          m.lng.toFixed(3) +
+          "</div>" +
+          '<a href="' +
+          url +
+          '" style="color:#22c55e;text-decoration:none;">Open QR</a>' +
+          "</div>"
+        );
+      }
+
+      var routeLayerByToken = {};
+      if (map) {
         const allPoints = [[depotLat, depotLng]];
-        markers.forEach(function (m, idx) {
+        markers.forEach(function (m) {
           if (!Number.isFinite(m.lat) || !Number.isFinite(m.lng)) return;
           allPoints.push([m.lat, m.lng]);
-          var lineCoords = normalizeRouteLine(polylines[idx], depotLat, depotLng, m.lat, m.lng);
-
-          if (map) {
-            L.polyline(lineCoords, {
-              color: "#38bdf8",
-              weight: 2,
-              opacity: 0.6,
-            }).addTo(map);
-
-            const marker = L.circleMarker([m.lat, m.lng], {
-              radius: 7,
-              color: "#34d399",
-              weight: 3,
-              fillColor: "#34d399",
-              fillOpacity: 0.85,
-            }).addTo(map);
-
-            const url = "/dispatch/" + m.token;
-            const popupHtml =
-              '<div class="text-sm">' +
-              '<div class="font-semibold" style="color:#dbeafe">' +
-              m.vehicle +
-              "</div>" +
-              '<div style="color:#93c5fd">' +
-              m.label +
-              "</div>" +
-              '<div style="color:#a5b4fc;font-size:12px;margin-top:4px;">GPS: ' +
-              m.lat.toFixed(3) +
-              ", " +
-              m.lng.toFixed(3) +
-              "</div>" +
-              '<a href="' +
-              url +
-              '" style="color:#22c55e;text-decoration:none;">Open QR</a>' +
-              "</div>";
-            marker.bindPopup(popupHtml);
-          }
+          var fallbackLine = normalizeRouteLine(null, depotLat, depotLng, m.lat, m.lng);
+          routeLayerByToken[m.token] = L.polyline(fallbackLine, {
+            color: "#38bdf8",
+            weight: 2,
+            opacity: 0.6,
+          }).addTo(map);
+          L.circleMarker([m.lat, m.lng], {
+            radius: 7,
+            color: "#34d399",
+            weight: 3,
+            fillColor: "#34d399",
+            fillOpacity: 0.85,
+          })
+            .addTo(map)
+            .bindPopup(popupHtmlForMarker(m));
         });
-
-        if (map && allPoints.length >= 2) {
+        if (allPoints.length >= 2) {
           const bounds = L.latLngBounds(allPoints);
           map.fitBounds(bounds, { padding: [18, 18], maxZoom: 10 });
         }
-
-        if (map) setTimeout(function () {
+        setTimeout(function () {
           map.invalidateSize();
         }, 100);
+      }
+
+      // Upgrade each route asynchronously without blocking initial draw.
+      markers.forEach(function (m) {
+        if (!Number.isFinite(m.lat) || !Number.isFinite(m.lng)) return;
+        withTimeout(fetchDashboardOsrmPolyline(depotLat, depotLng, m.lat, m.lng), 3500).then(function (poly) {
+          if (!map || !routeLayerByToken[m.token]) return;
+          var betterLine = normalizeRouteLine(poly, depotLat, depotLng, m.lat, m.lng);
+          routeLayerByToken[m.token].setLatLngs(betterLine);
+        });
       });
 
       // Fleet fullscreen map (only when Leaflet exists)
@@ -944,7 +955,12 @@
             .addTo(fleetFsMap)
             .bindPopup("Depot (" + depotName + ") — Our location");
 
-          getDashboardRoutePolylines().then(function (polylines) {
+          Promise.all(
+            markers.map(function (m) {
+              if (!Number.isFinite(m.lat) || !Number.isFinite(m.lng)) return Promise.resolve(null);
+              return withTimeout(fetchDashboardOsrmPolyline(depotLat, depotLng, m.lat, m.lng), 3500);
+            })
+          ).then(function (polylines) {
             if (!fleetFsMap) return;
             markers.forEach(function (m, idx) {
               if (!Number.isFinite(m.lat) || !Number.isFinite(m.lng)) return;

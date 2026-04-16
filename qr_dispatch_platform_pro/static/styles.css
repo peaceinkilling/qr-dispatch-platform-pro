@@ -3240,6 +3240,50 @@ html.theme-light .detail-pixel-scope .detail-meta-cell:hover {
   border-color: rgba(234, 40, 4, 0.22);
 }
 
+/* Estimated current CHT location marker */
+.cht-estimated-marker {
+  background: transparent;
+  border: 0;
+}
+
+.cht-estimated-marker__dot {
+  position: absolute;
+  width: 10px;
+  height: 10px;
+  left: 5px;
+  top: 5px;
+  border-radius: 999px;
+  background: #fb7185;
+  border: 2px solid #ffffff;
+  box-shadow: 0 0 0 1px rgba(244, 63, 94, 0.45), 0 3px 10px rgba(244, 63, 94, 0.35);
+}
+
+.cht-estimated-marker__pulse {
+  position: absolute;
+  width: 20px;
+  height: 20px;
+  left: 0;
+  top: 0;
+  border-radius: 999px;
+  border: 2px solid rgba(244, 63, 94, 0.55);
+  animation: cht-estimated-pulse 1.6s ease-out infinite;
+}
+
+@keyframes cht-estimated-pulse {
+  0% {
+    transform: scale(0.7);
+    opacity: 0.9;
+  }
+  80% {
+    transform: scale(1.8);
+    opacity: 0;
+  }
+  100% {
+    transform: scale(1.8);
+    opacity: 0;
+  }
+}
+
 html.theme-light .eta-badge--overdue {
   color: #991b1b;
   background: #fee2e2;

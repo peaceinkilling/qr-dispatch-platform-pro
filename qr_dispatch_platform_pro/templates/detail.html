@@ -700,13 +700,13 @@
           const estimate = estimateLocationOnRoute(previewLine, dispatchRaw, etaRaw, statusRaw);
           if (estimate && Array.isArray(estimate.point) && estimate.point.length >= 2) {
             const pct = Math.round(Math.max(0, Math.min(1, Number(estimate.progress || 0))) * 100);
-            L.circleMarker(estimate.point, {
-              radius: 6,
-              color: "#f43f5e",
-              weight: 2,
-              fillColor: "#fb7185",
-              fillOpacity: 0.95,
+            const estIcon = L.divIcon({
+              className: "cht-estimated-marker",
+              html: '<div class="cht-estimated-marker__dot"></div><div class="cht-estimated-marker__pulse"></div>',
+              iconSize: [20, 20],
+              iconAnchor: [10, 10],
             })
+            L.marker(estimate.point, { icon: estIcon })
               .addTo(inlineMap)
               .bindPopup("Estimated CHT location<br/>Based on dispatch time and ETA<br/>Progress: " + pct + "%");
           }
@@ -770,13 +770,13 @@
                 const fsEstimate = estimateLocationOnRoute(fsLine, dispatchRaw, etaRaw, statusRaw);
                 if (fsEstimate && Array.isArray(fsEstimate.point) && fsEstimate.point.length >= 2) {
                   const pct = Math.round(Math.max(0, Math.min(1, Number(fsEstimate.progress || 0))) * 100);
-                  L.circleMarker(fsEstimate.point, {
-                    radius: 7,
-                    color: "#f43f5e",
-                    weight: 2,
-                    fillColor: "#fb7185",
-                    fillOpacity: 0.95,
-                  })
+                  const fsEstIcon = L.divIcon({
+                    className: "cht-estimated-marker",
+                    html: '<div class="cht-estimated-marker__dot"></div><div class="cht-estimated-marker__pulse"></div>',
+                    iconSize: [20, 20],
+                    iconAnchor: [10, 10],
+                  });
+                  L.marker(fsEstimate.point, { icon: fsEstIcon })
                     .addTo(fullscreenMap)
                     .bindPopup("Estimated CHT location<br/>Based on dispatch time and ETA<br/>Progress: " + pct + "%");
                 }
