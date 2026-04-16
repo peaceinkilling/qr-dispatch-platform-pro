@@ -8,8 +8,9 @@
     <div class="title text-3xl sm:text-4xl font-bold tracking-tight">Edit dispatch</div>
     <div class="muted mt-1 text-sm">Modify dispatch data while preserving depot-only internal context.</div>
   </div>
-  <div class="flex gap-3">
+  <div class="flex flex-wrap gap-2 sm:gap-3">
     <a href="/" class="btn btn-ghost">Dashboard</a>
+    <a href="/admin/funds" class="btn btn-ghost">Summary</a>
     <a href="/dispatch/{{ token }}" class="btn btn-primary">Public preview</a>
   </div>
 </div>
@@ -161,6 +162,21 @@
         <div class="muted2 text-xs mt-2">
           Total weight must come from weighbridge or manifest; optional field is not multiplied by package count.
         </div>
+      </div>
+
+      <div>
+        <label class="muted text-sm" for="cht_cost_amount">CHT cost (₹)</label>
+        <input
+          id="cht_cost_amount"
+          class="field mt-2"
+          name="cht_cost_amount"
+          type="text"
+          inputmode="decimal"
+          value="{% if item.cht_cost_amount is not none %}{{ item.cht_cost_amount }}{% endif %}"
+          placeholder="Optional — fund head only"
+          title="Operating cost for this CHT (optional)"
+        />
+        <div class="muted2 text-xs mt-2">Fund summary only (PIN). Never on public dispatch or depot overview.</div>
       </div>
 
       <div>

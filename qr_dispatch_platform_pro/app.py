@@ -79,6 +79,12 @@ PUBLIC_BASE_URL = os.environ.get("PUBLIC_BASE_URL", "").strip().rstrip("/")
 # OpenStreetMap-based driving routes (OSRM). Set OSRM_ROUTING=false to use straight-line distance only.
 OSRM_ROUTING_ENABLED = os.environ.get("OSRM_ROUTING", "true").strip().lower() in ("1", "true", "yes", "on")
 OSRM_BASE_URL = os.environ.get("OSRM_BASE_URL", "https://router.project-osrm.org").strip().rstrip("/")
+# Snap depot/station to nearest drivable edge before routing (reduces odd detours from off-network pins).
+OSRM_SNAP_ENDPOINTS = os.environ.get("OSRM_SNAP_ENDPOINTS", "true").strip().lower() in ("1", "true", "yes", "on")
+
+# Funds portal (admin-only UI + extra PIN). Change via FUNDS_PORTAL_PIN in production.
+FUNDS_PORTAL_PIN = os.environ.get("FUNDS_PORTAL_PIN", "212141").strip()
+FUNDS_ANNUAL_TABLE = "fund_annual_budget"
 DISPATCH_TABLE = "dispatches"
 LOCATIONS_TABLE = "locations"
 PIN_CODES_TABLE = "pincodes"
@@ -175,8 +181,11 @@ class AdminGateMiddleware(BaseHTTPMiddleware):
             allowed_admin = (
                 path == "/"
                 or path.startswith("/admin/new")
+                or path.startswith("/admin/edit")
+                or path.startswith("/admin/delete")
                 or path.startswith("/admin/share")
                 or path.startswith("/admin/status/")
+                or path.startswith("/admin/funds")
                 or path.startswith("/export/")
                 or path in ("/admin/login", "/admin/logout")
             )
@@ -340,6 +349,21 @@ def _resolve_depot() -> None:
         DEPOT_LAT = pin["lat"]
         DEPOT_LNG = pin["lng"]
         DEPOT_NAME = pin["place_name"]
+
+
+def _apply_depot_env_override() -> None:
+    """Optional fine-tuning of depot GPS (e.g. align with Google Maps pin) via DEPOT_LAT / DEPOT_LNG."""
+    global DEPOT_LAT, DEPOT_LNG
+    try:
+        lat_s = os.environ.get("DEPOT_LAT")
+        lng_s = os.environ.get("DEPOT_LNG")
+        if lat_s:
+            DEPOT_LAT = float(lat_s)
+        if lng_s:
+            DEPOT_LNG = float(lng_s)
+    except (TypeError, ValueError):
+        pass
+
 
 # GPS lookup states for the public "Station/Location" view.
 LOCATION_STATES = {
@@ -710,6 +734,47 @@ def haversine_km(lat1: float, lng1: float, lat2: float, lng2: float) -> float:
     return R * c
 
 
+@functools.lru_cache(maxsize=1024)
+def _osrm_nearest_cached(key: tuple[float, float]) -> Optional[tuple[float, float]]:
+    """Snap a coordinate to the nearest point on the OSRM driving network."""
+    if not OSRM_ROUTING_ENABLED:
+        return None
+    import urllib.error
+    import urllib.request
+
+    lat, lng = key
+    url = f"{OSRM_BASE_URL}/nearest/v1/driving/{lng},{lat}?number=1"
+    req = urllib.request.Request(
+        url,
+        headers={"User-Agent": "DispatchQR/1.0 (OSRM nearest road snap)"},
+        method="GET",
+    )
+    try:
+        with urllib.request.urlopen(req, timeout=8) as resp:
+            body = json.loads(resp.read().decode("utf-8", "ignore"))
+    except (OSError, ValueError, urllib.error.URLError, json.JSONDecodeError):
+        return None
+    if body.get("code") != "Ok":
+        return None
+    wps = body.get("waypoints") or []
+    if not wps:
+        return None
+    loc = wps[0].get("location")
+    if not isinstance(loc, (list, tuple)) or len(loc) < 2:
+        return None
+    lng_r, lat_r = float(loc[0]), float(loc[1])
+    return (lat_r, lng_r)
+
+
+def osrm_snap_latlng(lat: float, lng: float) -> tuple[float, float]:
+    if not OSRM_SNAP_ENDPOINTS:
+        return (lat, lng)
+    got = _osrm_nearest_cached((round(lat, 5), round(lng, 5)))
+    if got:
+        return got
+    return (lat, lng)
+
+
 @functools.lru_cache(maxsize=768)
 def _osrm_driving_route_cached(key: tuple[float, float, float, float]) -> Optional[tuple[float, tuple[tuple[float, float], ...]]]:
     """
@@ -764,11 +829,6 @@ def _osrm_driving_route_cached(key: tuple[float, float, float, float]) -> Option
         latlngs.append((lat_a, lng_a))
     if len(latlngs) < 2:
         return None
-    # Force exact endpoint anchoring to avoid visual "offset" from snapped road nodes.
-    if abs(latlngs[0][0] - lat1) > 1e-5 or abs(latlngs[0][1] - lng1) > 1e-5:
-        latlngs.insert(0, (lat1, lng1))
-    if abs(latlngs[-1][0] - lat2) > 1e-5 or abs(latlngs[-1][1] - lng2) > 1e-5:
-        latlngs.append((lat2, lng2))
     return (dist_m / 1000.0, tuple(latlngs))
 
 
@@ -777,17 +837,35 @@ def osrm_driving_route(
 ) -> Optional[dict[str, Any]]:
     """
     Driving distance and path along roads (OSRM / OpenStreetMap), or None on failure.
+    Uses snapped road endpoints for the router, then anchors the polyline to the true depot/station pins.
     """
+    slat1, slng1 = osrm_snap_latlng(lat1, lng1)
+    slat2, slng2 = osrm_snap_latlng(lat2, lng2)
     k = (
-        round(lat1, 4),
-        round(lng1, 4),
-        round(lat2, 4),
-        round(lng2, 4),
+        round(slat1, 4),
+        round(slng1, 4),
+        round(slat2, 4),
+        round(slng2, 4),
     )
     got = _osrm_driving_route_cached(k)
     if not got:
         return None
-    dist_km, pts = got
+    dist_km, pts_t = got
+    pts: list[tuple[float, float]] = list(pts_t)
+
+    def _near_m(a: tuple[float, float], b: tuple[float, float]) -> float:
+        return haversine_km(a[0], a[1], b[0], b[1]) * 1000.0
+
+    # Anchor to true Banar / station coordinates for map display (short connectors if needed).
+    if pts:
+        if _near_m((lat1, lng1), pts[0]) > 120:
+            pts.insert(0, (lat1, lng1))
+        if _near_m((lat2, lng2), pts[-1]) > 120:
+            pts.append((lat2, lng2))
+        if abs(pts[0][0] - lat1) > 1e-5 or abs(pts[0][1] - lng1) > 1e-5:
+            pts[0] = (lat1, lng1)
+        if abs(pts[-1][0] - lat2) > 1e-5 or abs(pts[-1][1] - lng2) > 1e-5:
+            pts[-1] = (lat2, lng2)
     return {
         "distance_km": dist_km,
         "latlngs": [[lat, lng] for lat, lng in pts],
@@ -827,6 +905,21 @@ def _validate_dispatch_timeline_or_400(dispatch_date: str, eta_date: str) -> Non
         raise HTTPException(status_code=400, detail="Dispatch date/time cannot be in the future.")
     if eta_dt < dispatch_dt:
         raise HTTPException(status_code=400, detail="ETA cannot be earlier than dispatch date/time.")
+
+
+def _parse_optional_inr_amount(raw: Optional[str]) -> Optional[float]:
+    if raw is None:
+        return None
+    s = str(raw).strip().replace(",", "").replace("₹", "")
+    if not s:
+        return None
+    try:
+        v = float(s)
+    except ValueError:
+        raise HTTPException(status_code=400, detail="Invalid CHT cost amount.")
+    if v < 0:
+        raise HTTPException(status_code=400, detail="CHT cost cannot be negative.")
+    return v
 
 
 def human_eta(value: str) -> str:
@@ -910,7 +1003,13 @@ def normalize_mobile(value: str) -> str:
     return "".join(ch for ch in (value or "") if ch.isdigit())
 
 
-def hydrate_row(row: sqlite3.Row, *, public: bool, fetch_road_route: bool = False) -> dict:
+def hydrate_row(
+    row: sqlite3.Row,
+    *,
+    public: bool,
+    fetch_road_route: bool = False,
+    include_funds: bool = False,
+) -> dict:
     item = dict(row)
     raw_status = (item.get("status") or "").strip()
     effective_status = raw_status
@@ -964,6 +1063,10 @@ def hydrate_row(row: sqlite3.Row, *, public: bool, fetch_road_route: bool = Fals
     if public:
         # Never pass internal-only/confidential values to public templates.
         item.pop("internal_notes", None)
+        item.pop("cht_cost_amount", None)
+    elif not include_funds:
+        # CHT cost is fund-head only (not main dashboard / overview / share UI).
+        item.pop("cht_cost_amount", None)
 
     # Station/Location resolution (dispatch-level, safe for both admin and public).
     # "to" display: district name only (not detailed location). Priority: locations district > destination.
@@ -1050,6 +1153,7 @@ def init_db() -> None:
                 status TEXT NOT NULL DEFAULT 'On Route',
                 internal_notes TEXT DEFAULT '',
                 nature_of_items TEXT DEFAULT '',
+                cht_cost_amount REAL,
                 created_at TEXT NOT NULL,
                 updated_at TEXT NOT NULL
             );
@@ -1084,6 +1188,7 @@ def init_db() -> None:
             """
         )
         # Ensure depot (Banar, PIN 342027) is always resolvable.
+        # Coordinates aligned with IndiaMapia / common gazetteer listings for Banar SO (verify vs Google if needed).
         conn.execute(
             f"""
             INSERT OR IGNORE INTO {PIN_CODES_TABLE} (pincode, place_name, state_name, lat, lng)
@@ -1184,6 +1289,26 @@ def init_db() -> None:
             )
         if added_nature:
             conn.execute("ALTER TABLE dispatches ADD COLUMN nature_of_items TEXT DEFAULT ''")
+        if "cht_cost_amount" not in existing_cols:
+            conn.execute("ALTER TABLE dispatches ADD COLUMN cht_cost_amount REAL")
+
+        conn.executescript(
+            f"""
+            CREATE TABLE IF NOT EXISTS {FUNDS_ANNUAL_TABLE} (
+                year INTEGER PRIMARY KEY,
+                allocated_amount REAL NOT NULL DEFAULT 0,
+                updated_at TEXT NOT NULL
+            );
+            """
+        )
+        now_iso_seed = datetime.utcnow().isoformat(timespec="seconds")
+        conn.execute(
+            f"""
+            INSERT OR IGNORE INTO {FUNDS_ANNUAL_TABLE} (year, allocated_amount, updated_at)
+            VALUES (?, 0, ?)
+            """,
+            (datetime.utcnow().year, now_iso_seed),
+        )
 
         # Fixed public_token per CHT so QR codes are stable (no change on refresh).
         # Timeline fields are generated as recent, mixed sample traffic (common dispatch stations).
@@ -1544,6 +1669,7 @@ def startup() -> None:
     load_locations_cache()
     load_pincodes_cache()
     _resolve_depot()
+    _apply_depot_env_override()
     sync_delayed_statuses()
 
 
@@ -2065,9 +2191,11 @@ def create_consignment(
     nature_2: Optional[str] = Form(None),
     nature_3: Optional[str] = Form(None),
     nature_4: Optional[str] = Form(None),
+    cht_cost_amount: Optional[str] = Form(None),
 ):
     status = status if status in VALID_STATUSES else "On Route"
     _validate_dispatch_timeline_or_400(dispatch_date, eta_date)
+    cht_cost_val = _parse_optional_inr_amount(cht_cost_amount)
     token = secrets.token_urlsafe(12)
     now = datetime.utcnow().isoformat(timespec="seconds")
 
@@ -2088,8 +2216,8 @@ def create_consignment(
             """
             INSERT INTO dispatches
             (public_token, vehicle_number, dispatch_date, destination, destination_pincode, icn_number, driver_name, driver_mobile,
-             package_count, package_weight_kg, total_weight_kg, cht_capacity_weight_kg, eta_date, status, internal_notes, nature_of_items, created_at, updated_at)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+             package_count, package_weight_kg, total_weight_kg, cht_capacity_weight_kg, eta_date, status, internal_notes, nature_of_items, cht_cost_amount, created_at, updated_at)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """,
             (
                 token,
@@ -2108,6 +2236,7 @@ def create_consignment(
                 status,
                 internal_notes,
                 nature_of_items,
+                cht_cost_val,
                 now,
                 now,
             ),
@@ -2125,7 +2254,7 @@ def edit_dispatch_form(request: Request, token: str):
         ).fetchone()
     if not row:
         raise HTTPException(status_code=404, detail="Dispatch not found")
-    item = hydrate_row(row, public=False)
+    item = hydrate_row(row, public=False, include_funds=True)
     return templates.TemplateResponse(
         request,
         "edit.html",
@@ -2154,10 +2283,12 @@ def update_dispatch(
     nature_2: Optional[str] = Form(None),
     nature_3: Optional[str] = Form(None),
     nature_4: Optional[str] = Form(None),
+    cht_cost_amount: Optional[str] = Form(None),
 ):
     status = status if status in VALID_STATUSES else "On Route"
     _validate_dispatch_timeline_or_400(dispatch_date, eta_date)
     now = datetime.utcnow().isoformat(timespec="seconds")
+    cht_cost_val = _parse_optional_inr_amount(cht_cost_amount)
 
     # Total weight from form only (not derived from per-package × count).
 
@@ -2180,7 +2311,7 @@ def update_dispatch(
             f"""
             UPDATE {DISPATCH_TABLE}
             SET vehicle_number = ?, dispatch_date = ?, destination = ?, destination_pincode = ?, icn_number = ?, driver_name = ?, driver_mobile = ?,
-                package_count = ?, package_weight_kg = ?, total_weight_kg = ?, cht_capacity_weight_kg = ?, eta_date = ?, status = ?, internal_notes = ?, nature_of_items = ?, updated_at = ?
+                package_count = ?, package_weight_kg = ?, total_weight_kg = ?, cht_capacity_weight_kg = ?, eta_date = ?, status = ?, internal_notes = ?, nature_of_items = ?, cht_cost_amount = ?, updated_at = ?
             WHERE public_token = ?
             """,
             (
@@ -2199,12 +2330,205 @@ def update_dispatch(
                 status,
                 internal_notes,
                 nature_of_items,
+                cht_cost_val,
                 now,
                 token,
             ),
         )
         conn.commit()
     return RedirectResponse(url=f"/admin/edit/{token}?toast=updated", status_code=303)
+
+
+def _funds_year_window(y: int) -> tuple[str, str]:
+    return (f"{y}-01-01", f"{y + 1}-01-01")
+
+
+def _clamp_report_year(y: Optional[int]) -> int:
+    cur = datetime.now().year
+    if y is None:
+        return cur
+    if y < 2000 or y > 2100:
+        return cur
+    return y
+
+
+@app.get("/admin/funds")
+def funds_entry(request: Request):
+    if not request.session.get("admin_authenticated"):
+        return RedirectResponse(url=_admin_login_url("/admin/funds"), status_code=307)
+    if request.session.get("funds_portal_ok"):
+        return RedirectResponse(url="/admin/funds/dashboard", status_code=307)
+    return RedirectResponse(url="/admin/funds/pin", status_code=307)
+
+
+@app.get("/admin/funds/pin", response_class=HTMLResponse)
+def funds_pin_get(request: Request):
+    if not request.session.get("admin_authenticated"):
+        return RedirectResponse(url=_admin_login_url(str(request.url)), status_code=307)
+    next_url = request.query_params.get("next") or "/admin/funds/dashboard"
+    if not str(next_url).startswith("/admin/funds"):
+        next_url = "/admin/funds/dashboard"
+    err = request.query_params.get("err")
+    err_msg = "Invalid PIN. Try again." if err == "1" else ""
+    return templates.TemplateResponse(
+        request,
+        "funds_pin.html",
+        {"request": request, "next": next_url, "error": err_msg},
+    )
+
+
+@app.post("/admin/funds/pin")
+def funds_pin_post(request: Request, pin: str = Form(""), next: str = Form("/admin/funds/dashboard")):
+    if not request.session.get("admin_authenticated"):
+        return RedirectResponse(url=_admin_login_url("/admin/funds/pin"), status_code=307)
+    next_url = (next or "/admin/funds/dashboard").strip()
+    if not next_url.startswith("/admin/funds"):
+        next_url = "/admin/funds/dashboard"
+    if (pin or "").strip() == FUNDS_PORTAL_PIN:
+        request.session["funds_portal_ok"] = True
+        return RedirectResponse(url=next_url, status_code=303)
+    return RedirectResponse(url=f"/admin/funds/pin?next={quote(next_url)}&err=1", status_code=303)
+
+
+@app.post("/admin/funds/lock")
+def funds_lock(request: Request):
+    request.session.pop("funds_portal_ok", None)
+    return RedirectResponse(url="/admin/funds/pin", status_code=303)
+
+
+@app.get("/admin/funds/dashboard", response_class=HTMLResponse)
+def funds_dashboard(
+    request: Request,
+    year: Optional[int] = None,
+    q: str = "",
+    status: str = "All",
+    df: str = "",
+    dt: str = "",
+):
+    if not request.session.get("admin_authenticated"):
+        return RedirectResponse(url=_admin_login_url(str(request.url)), status_code=307)
+    if not request.session.get("funds_portal_ok"):
+        return RedirectResponse(
+            url="/admin/funds/pin?next=" + quote("/admin/funds/dashboard"),
+            status_code=303,
+        )
+    y = _clamp_report_year(year)
+    y0, y1 = _funds_year_window(y)
+    toast = (request.query_params.get("toast") or "").strip()
+
+    with closing(get_conn()) as conn:
+        row_b = conn.execute(
+            f"SELECT allocated_amount, updated_at FROM {FUNDS_ANNUAL_TABLE} WHERE year = ?",
+            (y,),
+        ).fetchone()
+        allocated = float(row_b["allocated_amount"]) if row_b else 0.0
+        budget_updated = (row_b["updated_at"] if row_b else "") or ""
+
+        spent_row = conn.execute(
+            f"""
+            SELECT COALESCE(SUM(cht_cost_amount), 0) AS s,
+                   COUNT(CASE WHEN cht_cost_amount IS NOT NULL THEN 1 END) AS n
+            FROM {DISPATCH_TABLE}
+            WHERE dispatch_date >= ? AND dispatch_date < ?
+            """,
+            (y0, y1),
+        ).fetchone()
+        spent = float(spent_row["s"] or 0)
+        n_costed = int(spent_row["n"] or 0)
+
+        sql = f"""
+            SELECT public_token, icn_number, vehicle_number, destination, destination_pincode,
+                   dispatch_date, status, cht_cost_amount
+            FROM {DISPATCH_TABLE}
+            WHERE dispatch_date >= ? AND dispatch_date < ?
+        """
+        params: list[object] = [y0, y1]
+        if q.strip():
+            like = f"%{q.strip()}%"
+            sql += (
+                " AND (LOWER(COALESCE(icn_number,'')) LIKE LOWER(?) OR "
+                "LOWER(vehicle_number) LIKE LOWER(?) OR "
+                "LOWER(COALESCE(destination,'')) LIKE LOWER(?) OR "
+                "LOWER(COALESCE(destination_pincode,'')) LIKE LOWER(?))"
+            )
+            params.extend([like, like, like, like])
+        if status and status != "All":
+            sql += " AND status = ?"
+            params.append(status)
+        if df.strip():
+            sql += " AND dispatch_date >= ?"
+            params.append(df.strip())
+        if dt.strip():
+            sql += " AND dispatch_date <= ?"
+            params.append(dt.strip())
+        sql += " ORDER BY datetime(dispatch_date) DESC, id DESC"
+        raw_rows = conn.execute(sql, params).fetchall()
+
+    balance = allocated - spent
+    rows_out: list[dict[str, Any]] = []
+    for r in raw_rows:
+        rd = dict(r)
+        c = rd.get("cht_cost_amount")
+        rd["cht_cost_display"] = f"₹{float(c):,.2f}" if c is not None else "—"
+        rd["dispatch_display"] = fmt_display(rd.get("dispatch_date") or "")
+        rows_out.append(rd)
+
+    avg_txt = f"₹{(spent / n_costed):,.2f}" if n_costed else "—"
+
+    return templates.TemplateResponse(
+        request,
+        "funds_dashboard.html",
+        {
+            "request": request,
+            "year": y,
+            "allocated": allocated,
+            "spent": spent,
+            "balance": balance,
+            "n_costed": n_costed,
+            "n_rows": len(rows_out),
+            "budget_updated": budget_updated,
+            "rows": rows_out,
+            "allocated_display": f"₹{allocated:,.2f}",
+            "allocated_input": f"{allocated:.2f}",
+            "spent_display": f"₹{spent:,.2f}",
+            "balance_display": f"₹{balance:,.2f}",
+            "avg_cost_display": avg_txt,
+            "q": q,
+            "status": status,
+            "df": df,
+            "dt": dt,
+            "toast": toast,
+        },
+    )
+
+
+@app.post("/admin/funds/budget")
+def funds_budget_post(request: Request, year: int = Form(...), allocated_amount: str = Form(...)):
+    if not request.session.get("admin_authenticated"):
+        return RedirectResponse(url=_admin_login_url("/admin/funds/budget"), status_code=307)
+    if not request.session.get("funds_portal_ok"):
+        return RedirectResponse(url="/admin/funds/pin", status_code=303)
+    y = _clamp_report_year(year)
+    try:
+        amt = float(str(allocated_amount).strip().replace(",", "").replace("₹", ""))
+    except ValueError:
+        raise HTTPException(status_code=400, detail="Invalid budget amount.")
+    if amt < 0:
+        raise HTTPException(status_code=400, detail="Budget cannot be negative.")
+    now = datetime.utcnow().isoformat(timespec="seconds")
+    with closing(get_conn()) as conn:
+        conn.execute(
+            f"""
+            INSERT INTO {FUNDS_ANNUAL_TABLE} (year, allocated_amount, updated_at)
+            VALUES (?, ?, ?)
+            ON CONFLICT(year) DO UPDATE SET
+              allocated_amount = excluded.allocated_amount,
+              updated_at = excluded.updated_at
+            """,
+            (y, amt, now),
+        )
+        conn.commit()
+    return RedirectResponse(url=f"/admin/funds/dashboard?year={y}&toast=budget", status_code=303)
 
 
 @app.post("/admin/status/{token}")

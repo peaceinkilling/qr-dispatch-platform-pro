@@ -11,12 +11,17 @@
       <div class="dashboard-page-title title">Depot control</div>
       <div class="dashboard-page-lede muted mt-2">Monitor CHT movement, filters, and fleet map in one view.</div>
     </div>
-    <a href="/admin/new" class="btn btn-primary">
-      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
-        <path d="M12 5v14M5 12h14" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
-      </svg>
-      New dispatch
-    </a>
+    <div class="flex flex-wrap gap-2">
+      <a href="/admin/funds" class="btn btn-ghost">
+        Summary
+      </a>
+      <a href="/admin/new" class="btn btn-primary">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+          <path d="M12 5v14M5 12h14" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
+        </svg>
+        New dispatch
+      </a>
+    </div>
   </div>
 </div>
 {% endblock %}
@@ -27,6 +32,7 @@
       <div class="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-4">
         <div class="flex flex-wrap items-center gap-2">
           <a href="/" class="btn btn-ghost btn-sm">Dashboard</a>
+          <a href="/admin/funds" class="btn btn-ghost btn-sm">Summary</a>
           <a href="/admin/new" class="btn btn-primary btn-sm">New dispatch</a>
         </div>
         <div class="muted text-sm">

@@ -133,6 +133,11 @@
             <div class="title text-sm font-semibold mt-0.5">{{ item.to_display }}</div>
           </div>
         </div>
+        <p class="muted2 text-xs mt-3 px-1 leading-relaxed shrink-0">
+          Depot is pinned to <strong>{{ depot_name }}</strong> (PIN {{ depot_pincode }}). The blue driving line uses
+          <strong>OpenStreetMap</strong> via <strong>OSRM</strong> (open data); it can differ from Google Maps. You can
+          fine-tune depot GPS with <code class="text-[11px]">DEPOT_LAT</code> / <code class="text-[11px]">DEPOT_LNG</code> if needed.
+        </p>
       </div>
 
       <aside class="detail-qr-aside flex flex-col gap-4 lg:min-h-0" aria-label="Dispatch QR code">
@@ -562,6 +567,29 @@
         return line;
       }
 
+      function bearingDeg(aLat, aLng, bLat, bLng) {
+        const φ1 = (aLat * Math.PI) / 180;
+        const φ2 = (bLat * Math.PI) / 180;
+        const Δλ = ((bLng - aLng) * Math.PI) / 180;
+        const y = Math.sin(Δλ) * Math.cos(φ2);
+        const x = Math.cos(φ1) * Math.sin(φ2) - Math.sin(φ1) * Math.cos(φ2) * Math.cos(Δλ);
+        const θ = Math.atan2(y, x);
+        return ((θ * 180) / Math.PI + 360) % 360;
+      }
+
+      function createGoogleStyleNavIcon(bearing) {
+        const b = Number.isFinite(Number(bearing)) ? Number(bearing) : 0;
+        return L.divIcon({
+          className: "cht-nav-pin-leaflet",
+          html:
+            '<div class="cht-nav-pin" style="transform: rotate(' +
+            b +
+            'deg)" role="presentation"><div class="cht-nav-pin__disc"><div class="cht-nav-pin__arrow"></div></div></div>',
+          iconSize: [40, 40],
+          iconAnchor: [20, 20],
+        });
+      }
+
       function parseMaybeDate(raw) {
         if (!raw) return null;
         const t = Date.parse(String(raw).replace(" ", "T"));
@@ -572,7 +600,16 @@
         if (!Array.isArray(line) || line.length < 2) return null;
         const status = String(statusRaw || "").trim().toLowerCase();
         if (status === "delivered") {
-          return { point: line[line.length - 1], progress: 1 };
+          if (line.length >= 2) {
+            const a = line[line.length - 2];
+            const b = line[line.length - 1];
+            return {
+              point: line[line.length - 1],
+              progress: 1,
+              bearing: bearingDeg(a[0], a[1], b[0], b[1]),
+            };
+          }
+          return { point: line[line.length - 1], progress: 1, bearing: 0 };
         }
         const d0 = parseMaybeDate(dispatchRaw);
         const d1 = parseMaybeDate(etaRaw);
@@ -581,8 +618,27 @@
         if (!Number.isFinite(totalMs) || totalMs <= 0) return null;
         const now = Date.now();
         const progress = Math.max(0, Math.min(1, (now - d0.getTime()) / totalMs));
-        if (progress <= 0) return { point: line[0], progress: 0 };
-        if (progress >= 1) return { point: line[line.length - 1], progress: 1 };
+        if (progress <= 0) {
+          const a = line[0];
+          const b = line[1];
+          return {
+            point: line[0],
+            progress: 0,
+            bearing: line.length >= 2 ? bearingDeg(a[0], a[1], b[0], b[1]) : 0,
+          };
+        }
+        if (progress >= 1) {
+          if (line.length >= 2) {
+            const a = line[line.length - 2];
+            const b = line[line.length - 1];
+            return {
+              point: line[line.length - 1],
+              progress: 1,
+              bearing: bearingDeg(a[0], a[1], b[0], b[1]),
+            };
+          }
+          return { point: line[line.length - 1], progress: 1, bearing: 0 };
+        }
 
         const segLens = [];
         let total = 0;
@@ -595,7 +651,7 @@
           segLens.push(len);
           total += len;
         }
-        if (total <= 0) return { point: line[0], progress: 0 };
+        if (total <= 0) return { point: line[0], progress: 0, bearing: 0 };
         let target = total * progress;
         for (let i = 0; i < segLens.length; i++) {
           const len = segLens[i];
@@ -609,9 +665,15 @@
           return {
             point: [a[0] + (b[0] - a[0]) * r, a[1] + (b[1] - a[1]) * r],
             progress,
+            bearing: bearingDeg(a[0], a[1], b[0], b[1]),
           };
         }
-        return { point: line[line.length - 1], progress: 1 };
+        if (line.length >= 2) {
+          const a = line[line.length - 2];
+          const b = line[line.length - 1];
+          return { point: line[line.length - 1], progress: 1, bearing: bearingDeg(a[0], a[1], b[0], b[1]) };
+        }
+        return { point: line[line.length - 1], progress: 1, bearing: 0 };
       }
 
       // Initialize the real location map (Leaflet).
@@ -700,15 +762,12 @@
           const estimate = estimateLocationOnRoute(previewLine, dispatchRaw, etaRaw, statusRaw);
           if (estimate && Array.isArray(estimate.point) && estimate.point.length >= 2) {
             const pct = Math.round(Math.max(0, Math.min(1, Number(estimate.progress || 0))) * 100);
-            const estIcon = L.divIcon({
-              className: "cht-estimated-marker",
-              html: '<div class="cht-estimated-marker__dot"></div><div class="cht-estimated-marker__pulse"></div>',
-              iconSize: [20, 20],
-              iconAnchor: [10, 10],
-            })
+            const estIcon = createGoogleStyleNavIcon(estimate.bearing);
             L.marker(estimate.point, { icon: estIcon })
               .addTo(inlineMap)
-              .bindPopup("Estimated CHT location<br/>Based on dispatch time and ETA<br/>Progress: " + pct + "%");
+              .bindPopup(
+                "Estimated position (schematic)<br/>Along OSRM route · heading by segment<br/>Progress: " + pct + "%"
+              );
           }
 
           const bounds = L.latLngBounds(previewLine);
@@ -770,15 +829,14 @@
                 const fsEstimate = estimateLocationOnRoute(fsLine, dispatchRaw, etaRaw, statusRaw);
                 if (fsEstimate && Array.isArray(fsEstimate.point) && fsEstimate.point.length >= 2) {
                   const pct = Math.round(Math.max(0, Math.min(1, Number(fsEstimate.progress || 0))) * 100);
-                  const fsEstIcon = L.divIcon({
-                    className: "cht-estimated-marker",
-                    html: '<div class="cht-estimated-marker__dot"></div><div class="cht-estimated-marker__pulse"></div>',
-                    iconSize: [20, 20],
-                    iconAnchor: [10, 10],
-                  });
+                  const fsEstIcon = createGoogleStyleNavIcon(fsEstimate.bearing);
                   L.marker(fsEstimate.point, { icon: fsEstIcon })
                     .addTo(fullscreenMap)
-                    .bindPopup("Estimated CHT location<br/>Based on dispatch time and ETA<br/>Progress: " + pct + "%");
+                    .bindPopup(
+                      "Estimated position (schematic)<br/>Along OSRM route · heading by segment<br/>Progress: " +
+                        pct +
+                        "%"
+                    );
                 }
                 // Hide only the fallback line once Leaflet draws.
                 const fbLine = document.getElementById("detailMapFallbackLine");

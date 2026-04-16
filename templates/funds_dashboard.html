@@ -1,0 +1,158 @@
+{% extends "base.html" %}
+
+{% block title %}Funds summary — Dispatch QR{% endblock %}
+
+{% block header %}
+<div class="flex flex-col sm:flex-row sm:items-end sm:justify-between gap-4">
+  <div>
+    <div class="title text-3xl sm:text-4xl font-bold tracking-tight">Funds summary</div>
+    <div class="muted mt-1 text-sm">Calendar-year view by dispatch date. CHT costs are never shown on the public page or main depot dashboard.</div>
+  </div>
+  <div class="flex flex-wrap gap-2">
+    <a href="/" class="btn btn-ghost">Dashboard</a>
+    <a href="/admin/funds" class="btn btn-primary">Summary</a>
+    <a href="/admin/new" class="btn btn-ghost">New dispatch</a>
+  </div>
+</div>
+{% endblock %}
+
+{% block content %}
+  <div class="glass-strong p-4 sm:p-5 mb-6 reveal">
+    <div class="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-4">
+      <div class="flex flex-wrap items-center gap-2">
+        <a href="/" class="btn btn-ghost btn-sm">Dashboard</a>
+        <a href="/admin/funds" class="btn btn-primary btn-sm">Summary</a>
+        <a href="/admin/new" class="btn btn-ghost btn-sm">New dispatch</a>
+      </div>
+      <form method="post" action="/admin/funds/lock" class="m-0">
+        <button type="submit" class="btn btn-ghost btn-sm">Lock funds view</button>
+      </form>
+    </div>
+  </div>
+
+  {% if toast == "budget" %}
+    <div class="mb-6 rounded-xl border border-emerald-500/30 bg-emerald-500/10 px-4 py-3 text-sm text-emerald-50">Annual allocation saved for {{ year }}.</div>
+  {% endif %}
+
+  <div class="grid grid-cols-1 lg:grid-cols-3 gap-4 mb-6">
+    <div class="glass-strong p-4 sm:p-5 rd-22">
+      <div class="muted text-xs uppercase tracking-wide">Allocated ({{ year }})</div>
+      <div class="title text-2xl font-bold mt-2">{{ allocated_display }}</div>
+      {% if budget_updated %}
+        <div class="muted2 text-xs mt-2">Last set {{ budget_updated }}</div>
+      {% endif %}
+    </div>
+    <div class="glass-strong p-4 sm:p-5 rd-22">
+      <div class="muted text-xs uppercase tracking-wide">Recorded spend</div>
+      <div class="title text-2xl font-bold mt-2">{{ spent_display }}</div>
+      <div class="muted2 text-xs mt-2">{{ n_costed }} CHT with a cost · {{ n_rows }} rows in table</div>
+    </div>
+    <div class="glass-strong p-4 sm:p-5 rd-22">
+      <div class="muted text-xs uppercase tracking-wide">Balance</div>
+      <div class="title text-2xl font-bold mt-2">{{ balance_display }}</div>
+      <div class="muted2 text-xs mt-2">Avg where cost set: {{ avg_cost_display }}</div>
+    </div>
+  </div>
+
+  <div class="glass-strong p-4 sm:p-6 mb-6 card-hover reveal">
+    <h2 class="title text-lg font-bold mb-4">Annual allocation</h2>
+    <form method="post" action="/admin/funds/budget" class="grid grid-cols-1 md:grid-cols-3 gap-4 items-end">
+      <div>
+        <label class="muted text-sm" for="budget_year">Year</label>
+        <input id="budget_year" class="field mt-2" type="number" name="year" min="2000" max="2100" value="{{ year }}" required />
+      </div>
+      <div class="md:col-span-2">
+        <label class="muted text-sm" for="allocated_amount">Allocated funds (₹)</label>
+        <input
+          id="allocated_amount"
+          class="field mt-2"
+          name="allocated_amount"
+          type="text"
+          inputmode="decimal"
+          value="{{ allocated_input | e }}"
+          required
+        />
+      </div>
+      <div class="md:col-span-3">
+        <button type="submit" class="btn btn-primary">Save allocation</button>
+      </div>
+    </form>
+  </div>
+
+  <div class="glass-strong p-4 sm:p-6 mb-6 card-hover reveal">
+    <h2 class="title text-lg font-bold mb-4">Search &amp; filters</h2>
+    <form method="get" action="/admin/funds/dashboard" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-6 gap-4">
+      <div>
+        <label class="muted text-sm" for="year">Report year</label>
+        <input id="year" class="field mt-2" type="number" name="year" min="2000" max="2100" value="{{ year }}" />
+      </div>
+      <div class="md:col-span-2">
+        <label class="muted text-sm" for="q">Search</label>
+        <input id="q" class="field mt-2" name="q" value="{{ q | e }}" placeholder="ICN, vehicle, destination, PIN" />
+      </div>
+      <div>
+        <label class="muted text-sm" for="status">Status</label>
+        <select id="status" class="field mt-2" name="status">
+          {% for s in ["All", "On Route", "Delayed", "Delivered"] %}
+            <option value="{{ s }}" {% if status == s %}selected{% endif %}>{{ s }}</option>
+          {% endfor %}
+        </select>
+      </div>
+      <div>
+        <label class="muted text-sm" for="df">Dispatch from</label>
+        <input id="df" class="field mt-2" type="date" name="df" value="{{ df | e }}" />
+      </div>
+      <div>
+        <label class="muted text-sm" for="dt">Dispatch to</label>
+        <input id="dt" class="field mt-2" type="date" name="dt" value="{{ dt | e }}" />
+      </div>
+      <div class="md:col-span-2 lg:col-span-6 flex gap-2">
+        <button type="submit" class="btn btn-primary">Apply</button>
+        <a href="/admin/funds/dashboard?year={{ year }}" class="btn btn-ghost">Reset filters</a>
+      </div>
+    </form>
+  </div>
+
+  <div class="glass-strong p-0 overflow-hidden rd-22 card-hover reveal">
+    <div class="px-4 sm:px-6 py-4 border-b border-white/10">
+      <h2 class="title text-lg font-bold">CHT costs ({{ year }})</h2>
+      <p class="muted2 text-sm mt-1">Dispatch date must fall in the selected year window. Costs are entered on create / edit dispatch.</p>
+    </div>
+    <div class="overflow-x-auto">
+      <table class="w-full text-sm funds-table">
+        <thead>
+          <tr class="text-left muted2 border-b border-white/10">
+            <th class="px-4 py-3 font-medium">Dispatch</th>
+            <th class="px-4 py-3 font-medium">ICN</th>
+            <th class="px-4 py-3 font-medium">Vehicle</th>
+            <th class="px-4 py-3 font-medium">To</th>
+            <th class="px-4 py-3 font-medium">PIN</th>
+            <th class="px-4 py-3 font-medium">Status</th>
+            <th class="px-4 py-3 font-medium text-right">Cost</th>
+            <th class="px-4 py-3 font-medium"></th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for row in rows %}
+            <tr class="border-b border-white/5 hover:bg-white/5">
+              <td class="px-4 py-3 whitespace-nowrap">{{ row.dispatch_display }}</td>
+              <td class="px-4 py-3">{{ row.icn_number or "—" }}</td>
+              <td class="px-4 py-3">{{ row.vehicle_number }}</td>
+              <td class="px-4 py-3">{{ row.destination or "—" }}</td>
+              <td class="px-4 py-3">{{ row.destination_pincode or "—" }}</td>
+              <td class="px-4 py-3">{{ row.status }}</td>
+              <td class="px-4 py-3 text-right font-mono">{{ row.cht_cost_display }}</td>
+              <td class="px-4 py-3 text-right">
+                <a class="btn btn-ghost btn-sm" href="/admin/edit/{{ row.public_token }}">Edit</a>
+              </td>
+            </tr>
+          {% else %}
+            <tr>
+              <td class="px-4 py-8 muted text-center" colspan="8">No dispatches match these filters.</td>
+            </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </div>
+{% endblock %}

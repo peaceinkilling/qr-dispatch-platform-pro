@@ -1,0 +1,31 @@
+{% extends "base.html" %}
+
+{% block title %}Funds — PIN{% endblock %}
+
+{% block header %}
+<div class="flex flex-col sm:flex-row sm:items-end sm:justify-between gap-4">
+  <div>
+    <div class="title text-3xl sm:text-4xl font-bold tracking-tight">Fund head access</div>
+    <div class="muted mt-1 text-sm">Enter the funds PIN to open the summary dashboard. Change the PIN later via environment variable <code class="text-xs">FUNDS_PORTAL_PIN</code>.</div>
+  </div>
+  <div class="flex flex-wrap gap-2">
+    <a href="/" class="btn btn-ghost">Dashboard</a>
+  </div>
+</div>
+{% endblock %}
+
+{% block content %}
+  <div class="glass-strong p-4 sm:p-6 max-w-md card-hover reveal">
+    <form method="post" action="/admin/funds/pin" class="space-y-4">
+      <input type="hidden" name="next" value="{{ next | e }}" />
+      {% if error %}
+        <div class="rounded-xl border border-rose-500/40 bg-rose-500/10 px-4 py-3 text-sm text-rose-100">{{ error }}</div>
+      {% endif %}
+      <div>
+        <label class="muted text-sm" for="pin">PIN</label>
+        <input id="pin" class="field mt-2" name="pin" type="password" inputmode="numeric" autocomplete="one-time-code" required />
+      </div>
+      <button type="submit" class="btn btn-primary w-full">Unlock summary</button>
+    </form>
+  </div>
+{% endblock %}

@@ -3284,6 +3284,48 @@ html.theme-light .detail-pixel-scope .detail-meta-cell:hover {
   }
 }
 
+/* Google Maps–style navigation pin for estimated position along route */
+.cht-nav-pin-leaflet {
+  background: transparent !important;
+  border: 0 !important;
+}
+
+.cht-nav-pin {
+  width: 40px;
+  height: 40px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transform-origin: center center;
+}
+
+.cht-nav-pin__disc {
+  width: 32px;
+  height: 32px;
+  border-radius: 999px;
+  background: linear-gradient(165deg, #4a8eff 0%, #1a73e8 45%, #1558b8 100%);
+  border: 2px solid #fff;
+  box-shadow: 0 2px 10px rgba(0, 0, 0, 0.35);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.cht-nav-pin__arrow {
+  width: 0;
+  height: 0;
+  border-left: 5px solid transparent;
+  border-right: 5px solid transparent;
+  border-bottom: 10px solid #ffffff;
+  margin-top: -1px;
+  filter: drop-shadow(0 1px 0 rgba(0, 0, 0, 0.15));
+}
+
+.funds-table th,
+.funds-table td {
+  vertical-align: middle;
+}
+
 html.theme-light .eta-badge--overdue {
   color: #991b1b;
   background: #fee2e2;
