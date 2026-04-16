@@ -754,6 +754,11 @@
       const depotLng = Number.isFinite(Number(data.depotLng)) ? Number(data.depotLng) : 73.1539759;
       const depotName = typeof data.depotName === "string" ? data.depotName : "";
       const markerCount = Number.isFinite(Number(data.markerCount)) ? Number(data.markerCount) : 0;
+      var mobileMap =
+        typeof window !== "undefined" &&
+        window.matchMedia &&
+        window.matchMedia("(max-width: 640px)").matches;
+      var effMarkerCount = markerCount + (mobileMap ? 28 : 0);
 
       // Schematic overlay should work even if Leaflet tiles fail or Leaflet is blocked.
       let map = null;
@@ -770,14 +775,17 @@
       }
 
       function createDashboardDepotDotIcon() {
-        var compact = markerCount > 16;
-        var sz = compact ? 18 : 24;
+        var compact = markerCount > 16 || mobileMap;
+        var sz = mobileMap ? 13 : compact ? 18 : 24;
         var ax = sz / 2;
         return L.divIcon({
-          className: "cht-depot-dot-leaflet" + (compact ? " cht-depot-dot-leaflet--compact" : ""),
+          className:
+            "cht-depot-dot-leaflet" +
+            (mobileMap ? " cht-depot-dot-leaflet--mobile" : "") +
+            (compact && !mobileMap ? " cht-depot-dot-leaflet--compact" : ""),
           html:
             '<div class="cht-depot-dot' +
-            (compact ? " cht-depot-dot--compact" : "") +
+            (mobileMap ? " cht-depot-dot--mobile" : compact ? " cht-depot-dot--compact" : "") +
             '"><span class="cht-depot-dot__ring"></span><span class="cht-depot-dot__core"></span></div>',
           iconSize: [sz, sz],
           iconAnchor: [ax, ax],
@@ -789,24 +797,35 @@
         var h;
         var ax;
         var ay;
-        if (markerCount > 22) {
+        var ir;
+        if (effMarkerCount > 22) {
           w = 12;
           h = 18;
           ax = 6;
           ay = 18;
-        } else if (markerCount > 12) {
+          ir = "3.5";
+        } else if (effMarkerCount > 12) {
           w = 16;
           h = 24;
           ax = 8;
           ay = 24;
+          ir = "4";
         } else {
           w = 20;
           h = 31;
           ax = 10;
           ay = 31;
+          ir = "4.2";
+        }
+        if (mobileMap) {
+          w = Math.min(w, 10);
+          h = Math.min(h, 15);
+          ax = Math.round(w / 2);
+          ay = h;
+          ir = "3";
         }
         return L.divIcon({
-          className: "cht-red-pin-leaflet",
+          className: "cht-red-pin-leaflet" + (mobileMap ? " cht-red-pin-leaflet--mobile" : ""),
           html:
             '<svg class="cht-red-pin-svg" viewBox="0 0 36 52" width="' +
             w +
@@ -815,7 +834,7 @@
             '" aria-hidden="true">' +
             '<path fill="#EA4335" stroke="#B31412" stroke-width="1" d="M18 0C8.06 0 0 8.06 0 18c0 13.5 18 34 18 34s18-20.5 18-34C36 8.06 27.94 0 18 0z"/>' +
             '<circle cx="18" cy="16" r="' +
-            (markerCount > 22 ? "3.5" : markerCount > 12 ? "4" : "4.2") +
+            ir +
             '" fill="#ffffff"/>' +
             "</svg>",
           iconSize: [w, h],

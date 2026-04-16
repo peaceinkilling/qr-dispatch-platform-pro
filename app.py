@@ -1315,8 +1315,8 @@ def init_db() -> None:
         )
 
         # Fixed public_token per CHT so QR codes are stable (no change on refresh).
-        # Timeline fields are generated as recent, mixed sample traffic (common dispatch stations).
-        # Demo destinations deliberately avoid Jodhpur city (too close to depot); use Sikar / north RJ instead.
+        # Demo timelines: staggered dispatch dates and distance-aware ETA day ranges from Banar (342027).
+        # Road distances on maps/QR still come from OSM coordinates + OSRM (not these day ranges).
         demo_seed_base = [
             {"public_token": "cht-gj08au8678", "vehicle_number": "GJ 08 AU 8678", "destination": "Jaisalmer", "destination_pincode": "345001", "icn_number": "ICN-CTH-226-10001", "driver_name": "Sattar Khan", "driver_mobile": "+91 98765 43210", "package_count": 95, "total_weight_kg": 4120.0, "nature_of_items": "1"},
             {"public_token": "cht-rj09ns1101", "vehicle_number": "RJ 09 NS 1101", "destination": "Nasirabad", "destination_pincode": "305601", "icn_number": "ICN-CTH-226-10002", "driver_name": "Ramesh Yadav", "driver_mobile": "+91 99887 76655", "package_count": 84, "total_weight_kg": 3760.0, "nature_of_items": "2"},
@@ -1348,21 +1348,45 @@ def init_db() -> None:
         delivered_n = max(3, min(n_demo // 3, 9))
         status_pool = ["Delivered"] * delivered_n + ["On Route"] * (n_demo - delivered_n)
         rng.shuffle(status_pool)
+        today_d = datetime.utcnow().date()
         demo_seed = []
-        for base_item, seed_status in zip(demo_seed_base, status_pool):
-            # Recent dispatches spread across the last ~2 weeks (refreshes on each init/migration).
-            dispatch_dt = datetime.utcnow().date() - timedelta(days=rng.randint(0, 14))
-            min_eta_dt = dispatch_dt + timedelta(days=1)
-            if seed_status == "Delivered":
-                eta_target = datetime.utcnow().date() - timedelta(days=rng.randint(0, 2))
+        for idx, (base_item, seed_status) in enumerate(zip(demo_seed_base, status_pool)):
+            # Rolling calendar: stagger over ~10 weeks (stable ordering by row index).
+            dispatch_dt = today_d - timedelta(days=min(92, 48 + idx * 2 + rng.randint(0, 2)))
+            pin = (base_item.get("destination_pincode") or "").strip()
+            # Road-transit day ranges from Banar (342027) — rough, distance-aware for believable ETAs.
+            if pin in ("345001", "344001", "344032", "345023", "305601"):
+                dmin, dmax = 2, 5
+            elif pin[:2] in ("30", "31", "32", "33"):
+                dmin, dmax = 3, 7
+            elif pin.startswith("38") or pin.startswith("39") or pin in ("361001", "370001", "382421"):
+                dmin, dmax = 5, 10
+            elif pin.startswith("46") or pin.startswith("45") or pin.startswith("47"):
+                dmin, dmax = 7, 14
+            elif pin.startswith("284"):
+                dmin, dmax = 8, 16
             else:
-                # Keep some non-delivered rows overdue to show delayed traffic in dashboard urgency badges.
-                is_delayed = rng.random() < 0.35
+                dmin, dmax = 4, 10
+            transit = rng.randint(dmin, dmax)
+            min_eta = dispatch_dt + timedelta(days=1)
+            if seed_status == "Delivered":
+                eta_dt = dispatch_dt + timedelta(days=transit + rng.randint(1, 4))
+                if eta_dt >= today_d:
+                    eta_dt = today_d - timedelta(days=rng.randint(2, 18))
+                if eta_dt <= dispatch_dt:
+                    eta_dt = dispatch_dt + timedelta(days=max(3, transit))
+            else:
+                is_delayed = rng.random() < 0.3
                 if is_delayed:
-                    eta_target = datetime.utcnow().date() - timedelta(days=rng.randint(1, 2))
+                    eta_dt = today_d - timedelta(days=rng.randint(1, 5))
+                    if eta_dt <= dispatch_dt:
+                        eta_dt = dispatch_dt + timedelta(days=max(2, transit - 2))
                 else:
-                    eta_target = datetime.utcnow().date() + timedelta(days=rng.randint(0, 4))
-            eta_dt = max(min_eta_dt, eta_target)
+                    eta_dt = dispatch_dt + timedelta(days=transit + rng.randint(0, 3))
+                    if eta_dt < today_d:
+                        eta_dt = today_d + timedelta(days=rng.randint(1, 8))
+            if eta_dt < min_eta:
+                eta_dt = min_eta
             seed_item = dict(base_item)
             seed_item["dispatch_date"] = dispatch_dt.isoformat()
             seed_item["eta"] = eta_dt.isoformat()
@@ -2771,6 +2795,7 @@ def funds_dashboard(
             "forecast_vs_budget_pct": forecast_vs_budget_pct,
             "forecast_note": forecast_note,
             "is_forecast_active": is_forecast_active,
+            "today_year": date.today().year,
             "q": q,
             "status": status,
             "df": df,
