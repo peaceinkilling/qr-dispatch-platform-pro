@@ -1351,8 +1351,8 @@ def init_db() -> None:
         today_d = datetime.utcnow().date()
         demo_seed = []
         for idx, (base_item, seed_status) in enumerate(zip(demo_seed_base, status_pool)):
-            # Rolling calendar: stagger over ~10 weeks (stable ordering by row index).
-            dispatch_dt = today_d - timedelta(days=min(92, 48 + idx * 2 + rng.randint(0, 2)))
+            # Keep demo traffic current while still staggered enough to look believable on the dashboard.
+            dispatch_dt = today_d - timedelta(days=min(26, idx + rng.randint(0, 3)))
             pin = (base_item.get("destination_pincode") or "").strip()
             # Road-transit day ranges from Banar (342027) — rough, distance-aware for believable ETAs.
             if pin in ("345001", "344001", "344032", "345023", "305601"):
@@ -1372,19 +1372,19 @@ def init_db() -> None:
             if seed_status == "Delivered":
                 eta_dt = dispatch_dt + timedelta(days=transit + rng.randint(1, 4))
                 if eta_dt >= today_d:
-                    eta_dt = today_d - timedelta(days=rng.randint(2, 18))
+                    eta_dt = today_d - timedelta(days=rng.randint(1, 6))
                 if eta_dt <= dispatch_dt:
                     eta_dt = dispatch_dt + timedelta(days=max(3, transit))
             else:
                 is_delayed = rng.random() < 0.3
                 if is_delayed:
-                    eta_dt = today_d - timedelta(days=rng.randint(1, 5))
+                    eta_dt = today_d - timedelta(days=rng.randint(1, 3))
                     if eta_dt <= dispatch_dt:
                         eta_dt = dispatch_dt + timedelta(days=max(2, transit - 2))
                 else:
                     eta_dt = dispatch_dt + timedelta(days=transit + rng.randint(0, 3))
                     if eta_dt < today_d:
-                        eta_dt = today_d + timedelta(days=rng.randint(1, 8))
+                        eta_dt = today_d + timedelta(days=rng.randint(1, 5))
             if eta_dt < min_eta:
                 eta_dt = min_eta
             seed_item = dict(base_item)

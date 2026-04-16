@@ -949,18 +949,25 @@
         );
       }
 
-      var routeLayerByToken = {};
+      function renderDashboardLines(polylinesByToken, useRoutes) {
+        if (!map) return;
+        markers.forEach(function (m) {
+          if (!Number.isFinite(m.lat) || !Number.isFinite(m.lng)) return;
+          var pts = useRoutes ? polylinesByToken[m.token] : null;
+          var coords = normalizeRouteLine(pts, depotLat, depotLng, m.lat, m.lng);
+          L.polyline(coords, {
+            color: "#38bdf8",
+            weight: 2,
+            opacity: 0.6,
+          }).addTo(map);
+        });
+      }
+
       if (map) {
         const allPoints = [[depotLat, depotLng]];
         markers.forEach(function (m) {
           if (!Number.isFinite(m.lat) || !Number.isFinite(m.lng)) return;
           allPoints.push([m.lat, m.lng]);
-          var fallbackLine = normalizeRouteLine(null, depotLat, depotLng, m.lat, m.lng);
-          routeLayerByToken[m.token] = L.polyline(fallbackLine, {
-            color: "#38bdf8",
-            weight: 2,
-            opacity: 0.6,
-          }).addTo(map);
           L.marker([m.lat, m.lng], { icon: createDashboardRedPinIcon(), zIndexOffset: 500 })
             .addTo(map)
             .bindPopup(popupHtmlForMarker(m));
@@ -972,17 +979,24 @@
         setTimeout(function () {
           map.invalidateSize();
         }, 100);
-      }
-
-      // Upgrade each route asynchronously without blocking initial draw.
-      markers.forEach(function (m) {
-        if (!Number.isFinite(m.lat) || !Number.isFinite(m.lng)) return;
-        withTimeout(fetchDashboardOsrmPolyline(depotLat, depotLng, m.lat, m.lng), 3500).then(function (poly) {
-          if (!map || !routeLayerByToken[m.token]) return;
-          var betterLine = normalizeRouteLine(poly, depotLat, depotLng, m.lat, m.lng);
-          routeLayerByToken[m.token].setLatLngs(betterLine);
+        Promise.all(
+          markers.map(function (m) {
+            if (!Number.isFinite(m.lat) || !Number.isFinite(m.lng)) return Promise.resolve({ token: m.token, poly: null });
+            return withTimeout(fetchDashboardOsrmPolyline(depotLat, depotLng, m.lat, m.lng), 3500).then(function (poly) {
+              return { token: m.token, poly: poly };
+            });
+          })
+        ).then(function (results) {
+          if (!map) return;
+          var polylinesByToken = {};
+          var okCount = 0;
+          results.forEach(function (r) {
+            polylinesByToken[r.token] = r.poly;
+            if (Array.isArray(r.poly) && r.poly.length >= 2) okCount += 1;
+          });
+          renderDashboardLines(polylinesByToken, okCount === markers.length && markers.length > 0);
         });
-      });
+      }
 
       // Fleet fullscreen map (only when Leaflet exists)
       const fleetModal = document.getElementById("fleetMapModal");
@@ -1025,10 +1039,13 @@
             })
           ).then(function (polylines) {
             if (!fleetFsMap) return;
+            var useRoutes = polylines.length > 0 && polylines.every(function (p) {
+              return Array.isArray(p) && p.length >= 2;
+            });
             markers.forEach(function (m, idx) {
               if (!Number.isFinite(m.lat) || !Number.isFinite(m.lng)) return;
               fsAllPoints.push([m.lat, m.lng]);
-              var lineCoords = normalizeRouteLine(polylines[idx], depotLat, depotLng, m.lat, m.lng);
+              var lineCoords = normalizeRouteLine(useRoutes ? polylines[idx] : null, depotLat, depotLng, m.lat, m.lng);
               L.polyline(lineCoords, {
                 color: "#38bdf8",
                 weight: 3,
