@@ -90,6 +90,7 @@ LOCATIONS_TABLE = "locations"
 PIN_CODES_TABLE = "pincodes"
 DELETED_DISPATCHES_TABLE = "deleted_dispatches"
 TRUSTED_ADMIN_DEVICES_TABLE = "trusted_admin_devices"
+OSRM_ROUTE_CACHE_TABLE = "osrm_route_cache"
 
 app = FastAPI(title="Dispatch QR Platform", version="3.0")
 app.mount("/static", StaticFiles(directory=str(BASE_DIR / "static")), name="static")
@@ -797,12 +798,75 @@ def osrm_snap_latlng(lat: float, lng: float) -> tuple[float, float]:
     return (lat, lng)
 
 
+def _osrm_route_cache_key(key: tuple[float, float, float, float]) -> str:
+    lat1, lng1, lat2, lng2 = key
+    return f"{lat1:.4f}:{lng1:.4f}:{lat2:.4f}:{lng2:.4f}"
+
+
+def _osrm_route_db_get(key: tuple[float, float, float, float]) -> Optional[tuple[float, tuple[tuple[float, float], ...]]]:
+    try:
+        with closing(get_conn()) as conn:
+            row = conn.execute(
+                f"SELECT distance_km, latlngs_json FROM {OSRM_ROUTE_CACHE_TABLE} WHERE key = ?",
+                (_osrm_route_cache_key(key),),
+            ).fetchone()
+    except sqlite3.Error:
+        return None
+    if not row:
+        return None
+    try:
+        pts_raw = json.loads(row["latlngs_json"])
+    except (TypeError, ValueError):
+        return None
+    pts: list[tuple[float, float]] = []
+    for p in pts_raw or []:
+        if isinstance(p, (list, tuple)) and len(p) >= 2:
+            try:
+                pts.append((float(p[0]), float(p[1])))
+            except (TypeError, ValueError):
+                continue
+    if len(pts) < 2:
+        return None
+    return (float(row["distance_km"] or 0.0), tuple(pts))
+
+
+def _osrm_route_db_put(key: tuple[float, float, float, float], dist_km: float, pts: tuple[tuple[float, float], ...]) -> None:
+    try:
+        with closing(get_conn()) as conn:
+            conn.execute(
+                f"""
+                INSERT INTO {OSRM_ROUTE_CACHE_TABLE} (key, distance_km, latlngs_json, cached_at)
+                VALUES (?, ?, ?, ?)
+                ON CONFLICT(key) DO UPDATE SET
+                  distance_km = excluded.distance_km,
+                  latlngs_json = excluded.latlngs_json,
+                  cached_at = excluded.cached_at
+                """,
+                (
+                    _osrm_route_cache_key(key),
+                    float(dist_km),
+                    json.dumps([[float(a), float(b)] for a, b in pts]),
+                    datetime.utcnow().isoformat(timespec="seconds"),
+                ),
+            )
+            conn.commit()
+    except sqlite3.Error:
+        # Cache persistence is best-effort — do not fail the request.
+        pass
+
+
 @functools.lru_cache(maxsize=768)
 def _osrm_driving_route_cached(key: tuple[float, float, float, float]) -> Optional[tuple[float, tuple[tuple[float, float], ...]]]:
     """
-    Call OSRM once per rounded depot/destination pair (process-local LRU).
+    Call OSRM once per rounded depot/destination pair.
+    Checks persistent DB cache first, then hits OSRM, then persists on success.
     Returns (distance_km, ((lat,lng), ...)) or None if routing fails.
     """
+    # 1) Persistent cross-restart cache.
+    cached = _osrm_route_db_get(key)
+    if cached:
+        return cached
+
     if not OSRM_ROUTING_ENABLED:
         return None
     import urllib.error
@@ -851,7 +915,11 @@ def _osrm_driving_route_cached(key: tuple[float, float, float, float]) -> Option
         latlngs.append((lat_a, lng_a))
     if len(latlngs) < 2:
         return None
-    return (dist_m / 1000.0, tuple(latlngs))
+
+    result = (dist_m / 1000.0, tuple(latlngs))
+    # 2) Persist for the next restart and for peer processes.
+    _osrm_route_db_put(key, result[0], result[1])
+    return result
 
 
 def osrm_driving_route(
@@ -1343,6 +1411,19 @@ def init_db() -> None:
                 year INTEGER PRIMARY KEY,
                 allocated_amount REAL NOT NULL DEFAULT 0,
                 updated_at TEXT NOT NULL
+            );
+            """
+        )
+
+        # Persistent OSRM route cache so road polylines survive restarts
+        # and every new dispatch contributes back to the shared cache.
+        conn.executescript(
+            f"""
+            CREATE TABLE IF NOT EXISTS {OSRM_ROUTE_CACHE_TABLE} (
+                key TEXT PRIMARY KEY,
+                distance_km REAL NOT NULL,
+                latlngs_json TEXT NOT NULL,
+                cached_at TEXT NOT NULL
             );
             """
         )
@@ -2265,6 +2346,38 @@ def _parse_nature_form(n1: Optional[str], n2: Optional[str], n3: Optional[str], 
     return ",".join(sorted(set(parts), key=lambda x: int(x)))
 
 
+def _prefetch_destination_route_async(destination_pincode: str) -> None:
+    """
+    Fire-and-forget: resolve the PIN (triggering Nominatim if needed) and pre-fetch
+    the OSRM road route from the depot so the public/detail page renders instantly
+    and survives server restarts (persistent cache).
+
+    Runs in a daemon thread — it never blocks the HTTP response or raises.
+    """
+    import threading
+
+    pin = normalize_pincode(destination_pincode or "")
+    if not pin:
+        return
+
+    def _worker() -> None:
+        try:
+            resolved = lookup_pincode(pin)
+            if not resolved:
+                return
+            lat = float(resolved.get("lat") or 0.0)
+            lng = float(resolved.get("lng") or 0.0)
+            if lat == 0.0 and lng == 0.0:
+                return
+            # Warms both the persistent OSRM cache and the process-local LRU.
+            osrm_driving_route(DEPOT_LAT, DEPOT_LNG, lat, lng)
+        except Exception:
+            # Prefetch is strictly best-effort — failures never surface to users.
+            return
+
+    threading.Thread(target=_worker, daemon=True, name=f"route-prefetch-{pin}").start()
+
+
 @app.post("/admin/new")
 def create_consignment(
     vehicle_number: str = Form(...),
@@ -2336,6 +2449,9 @@ def create_consignment(
             ),
         )
         conn.commit()
+    # Kick off eager internet-backed resolution + route fetch so the detail/QR
+    # page serves a road route immediately (survives restarts via DB cache).
+    _prefetch_destination_route_async(destination_pincode)
     return RedirectResponse(url=f"/admin/share/{token}?toast=created", status_code=303)
 
 
@@ -2430,6 +2546,9 @@ def update_dispatch(
             ),
         )
         conn.commit()
+    # Refresh pincode/route cache whenever a dispatch is edited (destination may
+    # have changed). Runs in a daemon thread — never blocks the redirect.
+    _prefetch_destination_route_async(destination_pincode)
     return RedirectResponse(url=f"/admin/edit/{token}?toast=updated", status_code=303)
 
 
