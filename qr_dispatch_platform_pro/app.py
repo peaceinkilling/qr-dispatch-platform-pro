@@ -186,6 +186,8 @@ class AdminGateMiddleware(BaseHTTPMiddleware):
                 or path.startswith("/admin/delete")
                 or path.startswith("/admin/share")
                 or path.startswith("/admin/status/")
+                or path.startswith("/admin/approve-delivery/")
+                or path.startswith("/admin/reject-delivery/")
                 or path.startswith("/admin/funds")
                 or path.startswith("/export/")
                 or path in ("/admin/login", "/admin/logout")
@@ -1013,24 +1015,26 @@ def _parse_optional_inr_amount(raw: Optional[str]) -> Optional[float]:
 
 
 def human_eta(value: str) -> str:
+    """
+    Day-granularity ETA line. Same text all day (no fake "12h left" suffix).
+
+    "Arriving today" / "Arriving tomorrow" / "Arriving in N days"
+    "Overdue by N day(s)"
+    """
     dt = parse_dt(value)
     if not dt:
         return value
-    # Treat "00:00" timestamps (often used for date-only inputs) as 12:00 PM for display.
-    # This avoids showing a misleading "time remaining" starting from 12 AM.
-    if dt.time() == time(0, 0) and dt.microsecond == 0:
-        dt = dt.replace(hour=12, minute=0, second=0, microsecond=0)
-    delta = dt - datetime.now()
-    if delta.total_seconds() <= 0:
-        return "Due / arrived"
-    days = delta.days
-    hours = delta.seconds // 3600
-    minutes = (delta.seconds % 3600) // 60
-    if days:
-        return f"{days}d {hours}h left"
-    if hours:
-        return f"{hours}h {minutes}m left"
-    return f"{minutes}m left"
+    today = datetime.now().date()
+    target = dt.date()
+    diff = (target - today).days
+    if diff < 0:
+        n = -diff
+        return f"Overdue by {n} day" + ("s" if n != 1 else "")
+    if diff == 0:
+        return "Arriving today"
+    if diff == 1:
+        return "Arriving tomorrow"
+    return f"Arriving in {diff} days"
 
 
 def eta_deadline_dt(eta_date_str: str) -> Optional[datetime]:
@@ -1157,6 +1161,15 @@ def hydrate_row(
     elif not include_funds:
         # CHT cost is fund-head only (not main dashboard / overview / share UI).
         item.pop("cht_cost_amount", None)
+
+    # Receiver-side delivery claim (shown on public page + dashboard notifications).
+    claim_by = (item.get("claim_delivered_by") or "").strip()
+    claim_at_raw = (item.get("claim_delivered_at") or "").strip()
+    item["claim_delivered_by"] = claim_by
+    item["claim_delivered_at"] = claim_at_raw
+    item["claim_delivered_note"] = (item.get("claim_delivered_note") or "").strip()
+    item["claim_at_display"] = fmt_display(claim_at_raw) if claim_at_raw else ""
+    item["has_pending_claim"] = bool(claim_by) and effective_status != "Delivered"
 
     # Station/Location resolution (dispatch-level, safe for both admin and public).
     # "to" display: district name only (not detailed location). Priority: locations district > destination.
@@ -1404,6 +1417,14 @@ def init_db() -> None:
             conn.execute("ALTER TABLE dispatches ADD COLUMN nature_of_items TEXT DEFAULT ''")
         if "cht_cost_amount" not in existing_cols:
             conn.execute("ALTER TABLE dispatches ADD COLUMN cht_cost_amount REAL")
+        # Receiver-side delivery claim: the unit at destination marks the CHT
+        # delivered; depot admin then confirms (single-click) to flip status.
+        if "claim_delivered_by" not in existing_cols:
+            conn.execute("ALTER TABLE dispatches ADD COLUMN claim_delivered_by TEXT DEFAULT ''")
+        if "claim_delivered_at" not in existing_cols:
+            conn.execute("ALTER TABLE dispatches ADD COLUMN claim_delivered_at TEXT DEFAULT ''")
+        if "claim_delivered_note" not in existing_cols:
+            conn.execute("ALTER TABLE dispatches ADD COLUMN claim_delivered_note TEXT DEFAULT ''")
 
         conn.executescript(
             f"""
@@ -2130,6 +2151,46 @@ def admin_logout(request: Request):
     return response
 
 
+def fetch_pending_delivery_claims(conn: sqlite3.Connection, limit: int = 20) -> list[dict]:
+    """
+    Notification feed for the dashboard: dispatches where the receiving unit
+    reported delivery but depot hasn't confirmed yet.
+    """
+    rows = conn.execute(
+        f"""
+        SELECT public_token, vehicle_number, destination, destination_pincode,
+               claim_delivered_by, claim_delivered_at, claim_delivered_note
+        FROM {DISPATCH_TABLE}
+        WHERE claim_delivered_by IS NOT NULL
+          AND claim_delivered_by != ''
+          AND status != 'Delivered'
+        ORDER BY datetime(claim_delivered_at) DESC
+        LIMIT ?
+        """,
+        (limit,),
+    ).fetchall()
+    out: list[dict] = []
+    now = datetime.now()
+    for r in rows:
+        d = dict(r)
+        claim_dt = parse_dt(d.get("claim_delivered_at") or "")
+        if claim_dt:
+            mins = max(0, int((now - claim_dt).total_seconds() // 60))
+            if mins < 60:
+                d["claim_age"] = f"{mins} min ago" if mins != 1 else "1 min ago"
+            elif mins < 60 * 24:
+                h = mins // 60
+                d["claim_age"] = f"{h} hr ago" if h != 1 else "1 hr ago"
+            else:
+                days = mins // (60 * 24)
+                d["claim_age"] = f"{days} day ago" if days == 1 else f"{days} days ago"
+        else:
+            d["claim_age"] = ""
+        d["claim_at_display"] = fmt_display(d.get("claim_delivered_at") or "")
+        out.append(d)
+    return out
+
+
 @app.get("/", response_class=HTMLResponse)
 def dashboard(
     request: Request,
@@ -2175,6 +2236,7 @@ def dashboard(
                     f"SELECT COUNT(*) FROM {DISPATCH_TABLE} WHERE status='Delivered'"
                 ).fetchone()[0],
             }
+            pending_claims = fetch_pending_delivery_claims(conn, limit=20)
         hero = rows[0] if rows else None
         map_marker_count = sum(
             1
@@ -2199,6 +2261,7 @@ def dashboard(
                 "weight_min": weight_min or "",
                 "weight_max": weight_max or "",
                 "stats": stats,
+                "pending_claims": pending_claims,
                 "hero": hero,
                 "depot_lat": DEPOT_LAT,
                 "depot_lng": DEPOT_LNG,
@@ -3024,6 +3087,93 @@ def set_dispatch_status(token: str, status: str = Form(...)):
         )
         conn.commit()
     return RedirectResponse(url="/?toast=updated", status_code=303)
+
+
+@app.post("/dispatch/{token}/claim-delivery")
+def claim_delivery(
+    token: str,
+    receiver_name: str = Form(...),
+    receiver_note: str = Form(""),
+):
+    """
+    Public endpoint used from the scanned QR page: the receiving unit reports
+    that the CHT has been delivered. Depot admin must still approve before
+    status flips to 'Delivered' — prevents accidental/fraudulent marking.
+    """
+    name = (receiver_name or "").strip()[:80]
+    note = (receiver_note or "").strip()[:280]
+    if len(name) < 2:
+        raise HTTPException(status_code=400, detail="Please enter your name (min 2 characters).")
+    now = datetime.utcnow().isoformat(timespec="seconds")
+    with closing(get_conn()) as conn:
+        row = conn.execute(
+            f"SELECT id, status FROM {DISPATCH_TABLE} WHERE public_token = ?",
+            (token,),
+        ).fetchone()
+        if not row:
+            raise HTTPException(status_code=404, detail="Dispatch not found")
+        if (row["status"] or "") == "Delivered":
+            return RedirectResponse(url=f"/dispatch/{token}?toast=already-delivered", status_code=303)
+        conn.execute(
+            f"""
+            UPDATE {DISPATCH_TABLE}
+            SET claim_delivered_by = ?,
+                claim_delivered_at = ?,
+                claim_delivered_note = ?,
+                updated_at = ?
+            WHERE public_token = ?
+            """,
+            (name, now, note, now, token),
+        )
+        conn.commit()
+    return RedirectResponse(url=f"/dispatch/{token}?toast=claim-sent", status_code=303)
+
+
+@app.post("/admin/approve-delivery/{token}")
+def approve_delivery(token: str):
+    """Depot-side single-click approval: flips status to Delivered."""
+    now = datetime.utcnow().isoformat(timespec="seconds")
+    with closing(get_conn()) as conn:
+        row = conn.execute(
+            f"SELECT claim_delivered_by FROM {DISPATCH_TABLE} WHERE public_token = ?",
+            (token,),
+        ).fetchone()
+        if not row:
+            raise HTTPException(status_code=404, detail="Dispatch not found")
+        # Only approve when there is actually a claim to approve — prevents
+        # accidental single-clicks from marking random dispatches delivered.
+        if not (row["claim_delivered_by"] or "").strip():
+            return RedirectResponse(url="/?toast=no-claim", status_code=303)
+        conn.execute(
+            f"""
+            UPDATE {DISPATCH_TABLE}
+            SET status = 'Delivered', updated_at = ?
+            WHERE public_token = ?
+            """,
+            (now, token),
+        )
+        conn.commit()
+    return RedirectResponse(url="/?toast=approved", status_code=303)
+
+
+@app.post("/admin/reject-delivery/{token}")
+def reject_delivery(token: str):
+    """Clears the receiver's claim without changing status (was a mistake)."""
+    now = datetime.utcnow().isoformat(timespec="seconds")
+    with closing(get_conn()) as conn:
+        conn.execute(
+            f"""
+            UPDATE {DISPATCH_TABLE}
+            SET claim_delivered_by = '',
+                claim_delivered_at = '',
+                claim_delivered_note = '',
+                updated_at = ?
+            WHERE public_token = ?
+            """,
+            (now, token),
+        )
+        conn.commit()
+    return RedirectResponse(url="/?toast=rejected", status_code=303)
 
 
 @app.get("/admin/delete/{token}", response_class=HTMLResponse)

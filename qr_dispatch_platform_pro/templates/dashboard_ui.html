@@ -80,6 +80,51 @@
         </div>
       </div>
 
+  {% if pending_claims and pending_claims|length > 0 %}
+  <section class="notif-panel glass-strong p-4 sm:p-5 mb-6 rd-26 card-hover reveal" aria-labelledby="notif-heading">
+    <header class="notif-panel-head">
+      <div class="notif-panel-head-text">
+        <div class="notif-panel-kicker">Notifications</div>
+        <h2 id="notif-heading" class="notif-panel-title title">Delivery approvals pending</h2>
+        <p class="notif-panel-lede muted2 text-sm mt-1">
+          Receiving units have reported these CHTs as delivered. Review and confirm from the depot.
+        </p>
+      </div>
+      <span class="notif-panel-count">{{ pending_claims|length }}</span>
+    </header>
+    <ul class="notif-list">
+      {% for c in pending_claims %}
+        <li class="notif-item">
+          <div class="notif-item-body">
+            <div class="notif-item-title">
+              <span class="notif-item-vehicle">{{ c.vehicle_number }}</span>
+              <span class="notif-item-arrow" aria-hidden="true">→</span>
+              <span class="notif-item-dest">{{ c.destination or "—" }}{% if c.destination_pincode %} · {{ c.destination_pincode }}{% endif %}</span>
+            </div>
+            <div class="notif-item-meta">
+              Marked delivered by <strong>{{ c.claim_delivered_by }}</strong>
+              {% if c.claim_age %} · {{ c.claim_age }}{% endif %}
+              {% if c.claim_at_display %} · {{ c.claim_at_display }}{% endif %}
+            </div>
+            {% if c.claim_delivered_note %}
+              <div class="notif-item-note">“{{ c.claim_delivered_note }}”</div>
+            {% endif %}
+          </div>
+          <div class="notif-item-actions">
+            <a href="/dispatch/{{ c.public_token }}" class="btn btn-ghost btn-sm" title="Open public dispatch">View</a>
+            <form method="post" action="/admin/reject-delivery/{{ c.public_token }}" class="inline">
+              <button type="submit" class="btn btn-ghost btn-sm" title="Discard this claim (no status change)">Not yet</button>
+            </form>
+            <form method="post" action="/admin/approve-delivery/{{ c.public_token }}" class="inline">
+              <button type="submit" class="btn btn-primary btn-sm" title="Confirm delivery & mark Delivered">Approve</button>
+            </form>
+          </div>
+        </li>
+      {% endfor %}
+    </ul>
+  </section>
+  {% endif %}
+
   <div class="filter-panel glass-strong p-4 sm:p-6 mb-6 card-hover reveal">
     <div class="filter-panel-head mb-5">
       <h2 class="filter-panel-title title">Search &amp; filters</h2>

@@ -221,6 +221,93 @@
         </div>
     </div>
 
+    <div class="mt-6 detail-panel detail-pixel-panel detail-delivery glass-strong p-4 sm:p-5 rd-24 max-w-4xl" id="deliveryPanel">
+      {% if item.status == "Delivered" %}
+        <div class="detail-delivery-state detail-delivery-state--done">
+          <div class="detail-delivery-icon" aria-hidden="true">
+            <svg width="28" height="28" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+              <path d="M5 13l4 4L19 7" stroke="currentColor" stroke-width="2.3" stroke-linecap="round" stroke-linejoin="round"/>
+            </svg>
+          </div>
+          <div class="detail-delivery-text">
+            <div class="detail-panel-label">Delivery confirmed</div>
+            <div class="title detail-delivery-title font-bold mt-1">Delivered &amp; approved by depot</div>
+            {% if item.claim_delivered_by %}
+              <div class="detail-panel-muted mt-1">
+                Signed for by <strong>{{ item.claim_delivered_by }}</strong>{% if item.claim_at_display %} · {{ item.claim_at_display }}{% endif %}
+              </div>
+              {% if item.claim_delivered_note %}
+                <div class="detail-delivery-note mt-2">“{{ item.claim_delivered_note }}”</div>
+              {% endif %}
+            {% endif %}
+          </div>
+        </div>
+      {% elif item.has_pending_claim %}
+        <div class="detail-delivery-state detail-delivery-state--pending">
+          <div class="detail-delivery-icon" aria-hidden="true">
+            <svg width="28" height="28" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+              <path d="M12 8v4l3 2M21 12a9 9 0 11-18 0 9 9 0 0118 0z" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+            </svg>
+          </div>
+          <div class="detail-delivery-text">
+            <div class="detail-panel-label">Delivery reported</div>
+            <div class="title detail-delivery-title font-bold mt-1">Awaiting depot approval</div>
+            <div class="detail-panel-muted mt-1">
+              Marked delivered by <strong>{{ item.claim_delivered_by }}</strong>{% if item.claim_at_display %} · {{ item.claim_at_display }}{% endif %}
+            </div>
+            {% if item.claim_delivered_note %}
+              <div class="detail-delivery-note mt-2">“{{ item.claim_delivered_note }}”</div>
+            {% endif %}
+            <div class="detail-delivery-hint mt-2 muted2 text-xs">
+              Depot is reviewing this report; status will update once confirmed.
+            </div>
+          </div>
+        </div>
+      {% else %}
+        <div class="detail-delivery-state detail-delivery-state--claim">
+          <div class="detail-delivery-text">
+            <div class="detail-panel-label">Receiving unit</div>
+            <div class="title detail-delivery-title font-bold mt-1">Mark this CHT as delivered</div>
+            <p class="detail-panel-muted mt-1 text-sm">
+              Report delivery to the depot. A depot admin approves the report before the
+              status officially changes — this avoids accidental or wrong closures.
+            </p>
+          </div>
+          <form method="post" action="/dispatch/{{ item.public_token }}/claim-delivery" class="detail-delivery-form mt-3">
+            <div class="detail-delivery-grid">
+              <div class="detail-delivery-field">
+                <label class="muted text-sm" for="receiver_name">Your name (receiver)</label>
+                <input
+                  id="receiver_name"
+                  class="field mt-2"
+                  name="receiver_name"
+                  required
+                  minlength="2"
+                  maxlength="80"
+                  autocomplete="name"
+                  placeholder="e.g. Subedar R. Kumar"
+                />
+              </div>
+              <div class="detail-delivery-field">
+                <label class="muted text-sm" for="receiver_note">Note (optional)</label>
+                <input
+                  id="receiver_note"
+                  class="field mt-2"
+                  name="receiver_note"
+                  maxlength="280"
+                  placeholder="Any remarks — condition, missing items, etc."
+                />
+              </div>
+            </div>
+            <div class="detail-delivery-actions mt-3">
+              <button type="submit" class="btn btn-primary">Mark delivered</button>
+              <span class="muted2 text-xs">Depot is notified immediately for approval.</span>
+            </div>
+          </form>
+        </div>
+      {% endif %}
+    </div>
+
     <div class="mt-6 detail-panel detail-pixel-panel glass-strong p-4 sm:p-5 rd-24 max-w-4xl">
       <div class="detail-panel-label">Load overview</div>
       {% set load_pct = item.load_percent|default(0)|float %}
