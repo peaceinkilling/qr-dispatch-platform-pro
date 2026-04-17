@@ -476,6 +476,14 @@ def lookup_location(destination: str) -> Optional[dict]:
 
 
 PINCODE_STATES = {"Rajasthan", "Madhya Pradesh", "Maharashtra", "Gujarat"}
+PINCODE_STATES_LOWER = {s.lower() for s in PINCODE_STATES} | {
+    # Also skip other common Indian state tokens so the PIN->place parser
+    # never picks a state word as the city.
+    "uttar pradesh", "haryana", "punjab", "delhi", "bihar", "jharkhand",
+    "chhattisgarh", "karnataka", "tamil nadu", "telangana", "andhra pradesh",
+    "kerala", "odisha", "west bengal", "assam", "goa", "himachal pradesh",
+    "jammu and kashmir", "uttarakhand",
+}
 PINCODES_BY_PIN: dict[str, dict] = {}
 PINCODES_GEOCODE_FAILED: set[str] = set()
 
@@ -675,7 +683,21 @@ def _geocode_pincode_nominatim(pin: str) -> Optional[dict]:
         return None
 
     display = str(first.get("display_name") or "").strip()
-    place_name = display.split(",")[0].strip() if display else pin
+    # Nominatim often returns the PIN itself as the first token (e.g. "344001, Barmer, Rajasthan, India").
+    # Walk the tokens and pick the first meaningful human-readable name, skipping the PIN + stray digits.
+    place_name = pin
+    if display:
+        for raw in display.split(","):
+            tok = raw.strip()
+            if not tok:
+                continue
+            if tok == pin or tok.isdigit():
+                continue
+            low = tok.lower()
+            if low in ("india",) or low in PINCODE_STATES_LOWER:
+                continue
+            place_name = tok
+            break
 
     # Best-effort state extraction from Nominatim display_name.
     state_name = ""
@@ -1204,19 +1226,38 @@ def init_db() -> None:
         # This prevents wrong station GPS pins (which look like "Pakistan" on the schematic/fallback map).
         # Also fills missing pincodes so markings appear for every CHT with a valid destination_pincode.
         pincode_fixes = [
+            # Rajasthan
             ("302001", "Jaipur", "Rajasthan", 26.9124, 75.7873),
+            ("301001", "Alwar", "Rajasthan", 27.5530, 76.6346),
+            ("305001", "Ajmer", "Rajasthan", 26.4499, 74.6399),
+            ("305601", "Nasirabad", "Rajasthan", 26.3076, 74.7336),
+            ("307501", "Mount Abu", "Rajasthan", 24.5926, 72.7156),
             ("313001", "Udaipur", "Rajasthan", 24.5854, 73.7125),
-            ("334001", "Bikaner", "Rajasthan", 28.0222, 73.3119),
             ("324001", "Kota", "Rajasthan", 25.2138, 75.8564),
+            ("332001", "Sikar", "Rajasthan", 27.6094, 75.1399),
+            ("334001", "Bikaner", "Rajasthan", 28.0222, 73.3119),
+            ("344001", "Barmer", "Rajasthan", 25.7521, 71.3966),
+            ("344032", "Utarlai", "Rajasthan", 25.8010, 71.5190),
             ("345001", "Jaisalmer", "Rajasthan", 26.9156, 70.9076),
+            ("345023", "Pokhran", "Rajasthan", 26.9180, 71.9152),
+            # Gujarat
+            ("361001", "Jamnagar", "Gujarat", 22.4707, 70.0577),
+            ("370001", "Bhuj", "Gujarat", 23.2420, 69.6669),
             ("380001", "Ahmedabad", "Gujarat", 23.2156, 72.7961),
-            ("395001", "Surat", "Gujarat", 21.1702, 72.8311),
+            ("382421", "Gandhinagar", "Gujarat", 23.2156, 72.6369),
             ("390001", "Vadodara", "Gujarat", 22.3072, 73.1812),
+            ("395001", "Surat", "Gujarat", 21.1702, 72.8311),
+            # Madhya Pradesh
             ("452001", "Indore", "Madhya Pradesh", 22.7196, 75.8577),
             ("462001", "Bhopal", "Madhya Pradesh", 23.2599, 77.4126),
-            ("431001", "Aurangabad", "Maharashtra", 19.8762, 75.3433),
+            ("474001", "Gwalior", "Madhya Pradesh", 26.2183, 78.1828),
+            # Maharashtra
             ("411001", "Pune", "Maharashtra", 18.5204, 73.8567),
+            ("431001", "Aurangabad", "Maharashtra", 19.8762, 75.3433),
             ("440001", "Nagpur", "Maharashtra", 21.1458, 79.0882),
+            # Uttar Pradesh (demo)
+            ("284001", "Jhansi", "Uttar Pradesh", 25.4484, 78.5685),
+            ("284501", "Babina", "Uttar Pradesh", 25.2430, 78.4620),
         ]
         conn.executemany(
             f"""
@@ -1345,14 +1386,18 @@ def init_db() -> None:
         ]
         rng = random.Random(datetime.utcnow().date().isoformat())
         n_demo = len(demo_seed_base)
-        delivered_n = max(3, min(n_demo // 3, 9))
-        status_pool = ["Delivered"] * delivered_n + ["On Route"] * (n_demo - delivered_n)
+        delivered_n = max(3, min(n_demo // 3, 8))
+        delayed_n = max(2, n_demo // 9)
+        onroute_n = max(1, n_demo - delivered_n - delayed_n)
+        status_pool = (
+            ["Delivered"] * delivered_n
+            + ["Delayed"] * delayed_n
+            + ["On Route"] * onroute_n
+        )
         rng.shuffle(status_pool)
         today_d = datetime.utcnow().date()
         demo_seed = []
         for idx, (base_item, seed_status) in enumerate(zip(demo_seed_base, status_pool)):
-            # Keep demo traffic current while still staggered enough to look believable on the dashboard.
-            dispatch_dt = today_d - timedelta(days=min(26, idx + rng.randint(0, 3)))
             pin = (base_item.get("destination_pincode") or "").strip()
             # Road-transit day ranges from Banar (342027) — rough, distance-aware for believable ETAs.
             if pin in ("345001", "344001", "344032", "345023", "305601"):
@@ -1368,25 +1413,40 @@ def init_db() -> None:
             else:
                 dmin, dmax = 4, 10
             transit = rng.randint(dmin, dmax)
-            min_eta = dispatch_dt + timedelta(days=1)
+
             if seed_status == "Delivered":
-                eta_dt = dispatch_dt + timedelta(days=transit + rng.randint(1, 4))
-                if eta_dt >= today_d:
-                    eta_dt = today_d - timedelta(days=rng.randint(1, 6))
-                if eta_dt <= dispatch_dt:
-                    eta_dt = dispatch_dt + timedelta(days=max(3, transit))
+                # Completed recently — ETA in the past, dispatched a transit-window earlier.
+                eta_dt = today_d - timedelta(days=rng.randint(1, 18))
+                dispatch_dt = eta_dt - timedelta(days=transit + rng.randint(0, 3))
+            elif seed_status == "Delayed":
+                # ETA just slipped into the past; still in transit.
+                eta_dt = today_d - timedelta(days=rng.randint(1, 5))
+                dispatch_dt = eta_dt - timedelta(days=transit + rng.randint(0, 2))
             else:
-                is_delayed = rng.random() < 0.3
-                if is_delayed:
-                    eta_dt = today_d - timedelta(days=rng.randint(1, 3))
-                    if eta_dt <= dispatch_dt:
-                        eta_dt = dispatch_dt + timedelta(days=max(2, transit - 2))
-                else:
+                # On Route — three realistic buckets:
+                #   A) Just dispatched (today / yesterday), arriving next few days/weeks
+                #   B) Dispatched this week, mid-transit, ETA this week or next
+                #   C) Dispatched 1–2 weeks back, long-haul, ETA further out
+                bucket = rng.random()
+                if bucket < 0.30:
+                    dispatch_dt = today_d - timedelta(days=rng.randint(0, 2))
                     eta_dt = dispatch_dt + timedelta(days=transit + rng.randint(0, 3))
-                    if eta_dt < today_d:
-                        eta_dt = today_d + timedelta(days=rng.randint(1, 5))
-            if eta_dt < min_eta:
-                eta_dt = min_eta
+                elif bucket < 0.70:
+                    dispatch_dt = today_d - timedelta(days=rng.randint(3, 6))
+                    eta_dt = dispatch_dt + timedelta(days=transit + rng.randint(0, 3))
+                else:
+                    dispatch_dt = today_d - timedelta(days=rng.randint(7, 13))
+                    eta_dt = dispatch_dt + timedelta(days=transit + rng.randint(2, 6))
+                # On-route rows must still have ETA strictly in the future.
+                if eta_dt <= today_d:
+                    eta_dt = today_d + timedelta(days=rng.randint(2, max(3, transit)))
+
+            # Safety: ETA must be after dispatch and dispatch not in the future.
+            if dispatch_dt > today_d:
+                dispatch_dt = today_d
+            if eta_dt <= dispatch_dt:
+                eta_dt = dispatch_dt + timedelta(days=max(2, transit))
+
             seed_item = dict(base_item)
             seed_item["dispatch_date"] = dispatch_dt.isoformat()
             seed_item["eta"] = eta_dt.isoformat()

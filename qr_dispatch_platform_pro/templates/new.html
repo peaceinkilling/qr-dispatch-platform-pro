@@ -378,6 +378,26 @@
         if (e.target === destinationInput || suggestBox.contains(e.target)) return;
         hideSuggestions();
       });
+
+      // Prefill dispatch date with today and ETA with today + 5 days for faster entry.
+      // Only when empty so we never stomp user-entered values on back-navigation.
+      const dispatchEl = document.getElementById("dispatch_date");
+      const etaEl = document.getElementById("eta_date");
+      if (dispatchEl && !dispatchEl.value) {
+        const now = new Date();
+        const y = now.getFullYear();
+        const m = String(now.getMonth() + 1).padStart(2, "0");
+        const d = String(now.getDate()).padStart(2, "0");
+        dispatchEl.value = `${y}-${m}-${d}`;
+      }
+      if (etaEl && !etaEl.value) {
+        const plus = new Date();
+        plus.setDate(plus.getDate() + 5);
+        const y = plus.getFullYear();
+        const m = String(plus.getMonth() + 1).padStart(2, "0");
+        const d = String(plus.getDate()).padStart(2, "0");
+        etaEl.value = `${y}-${m}-${d}`;
+      }
     })();
   </script>
 {% endblock %}
