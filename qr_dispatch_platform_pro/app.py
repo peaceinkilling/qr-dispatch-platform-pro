@@ -11,7 +11,23 @@ import smtplib
 import hashlib
 from contextlib import closing
 import csv
-from datetime import date, datetime, timedelta, time
+from datetime import date, datetime, timedelta, time, timezone
+
+
+def utcnow() -> datetime:
+    """Timezone-aware UTC 'now' as a naive datetime.
+
+    Uses the non-deprecated ``datetime.now(timezone.utc)`` and drops tzinfo so
+    the returned value keeps the existing (timezone-naive) semantics used
+    throughout the app (ISO strings without offsets, simple comparisons with
+    parsed DB timestamps). Replace ``datetime.utcnow()`` with this.
+    """
+    return datetime.now(timezone.utc).replace(tzinfo=None)
+
+
+def utcnow_iso(spec: str = "seconds") -> str:
+    """Shorthand for ``utcnow().isoformat(timespec=spec)`` used across writes."""
+    return utcnow().isoformat(timespec=spec)
 from pathlib import Path
 from typing import Any, Optional
 from email.message import EmailMessage
@@ -91,6 +107,7 @@ PIN_CODES_TABLE = "pincodes"
 DELETED_DISPATCHES_TABLE = "deleted_dispatches"
 TRUSTED_ADMIN_DEVICES_TABLE = "trusted_admin_devices"
 OSRM_ROUTE_CACHE_TABLE = "osrm_route_cache"
+DELIVERY_CLAIM_LOG_TABLE = "delivery_claim_log"
 
 app = FastAPI(title="Dispatch QR Platform", version="3.0")
 app.mount("/static", StaticFiles(directory=str(BASE_DIR / "static")), name="static")
@@ -285,7 +302,7 @@ def _send_login_codes_email(one_time_code: str, device_code: str) -> tuple[bool,
 
 
 def _register_trusted_device(token: str, user_agent: str) -> None:
-    now = datetime.utcnow().isoformat(timespec="seconds")
+    now = utcnow_iso()
     with closing(get_conn()) as conn:
         conn.execute(
             f"""
@@ -314,7 +331,7 @@ def _is_trusted_device(token: str) -> bool:
             return False
         conn.execute(
             f"UPDATE {TRUSTED_ADMIN_DEVICES_TABLE} SET last_used_at = ? WHERE token_hash = ?",
-            (datetime.utcnow().isoformat(timespec="seconds"), token_hash),
+            (utcnow_iso(), token_hash),
         )
         conn.commit()
     return True
@@ -848,7 +865,7 @@ def _osrm_route_db_put(key: tuple[float, float, float, float], dist_km: float, p
                     _osrm_route_cache_key(key),
                     float(dist_km),
                     json.dumps([[float(a), float(b)] for a, b in pts]),
-                    datetime.utcnow().isoformat(timespec="seconds"),
+                    utcnow_iso(),
                 ),
             )
             conn.commit()
@@ -1448,13 +1465,31 @@ def init_db() -> None:
             );
             """
         )
-        now_iso_seed = datetime.utcnow().isoformat(timespec="seconds")
+        # Append-only audit trail for delivery-claim events (claim / approve / reject).
+        # Kept deliberately simple — a single row per action with a free-text actor label.
+        conn.executescript(
+            f"""
+            CREATE TABLE IF NOT EXISTS {DELIVERY_CLAIM_LOG_TABLE} (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                public_token TEXT NOT NULL,
+                action TEXT NOT NULL,
+                actor TEXT NOT NULL DEFAULT '',
+                note TEXT NOT NULL DEFAULT '',
+                at TEXT NOT NULL
+            );
+            CREATE INDEX IF NOT EXISTS idx_claim_log_at
+                ON {DELIVERY_CLAIM_LOG_TABLE}(at DESC);
+            CREATE INDEX IF NOT EXISTS idx_claim_log_token
+                ON {DELIVERY_CLAIM_LOG_TABLE}(public_token);
+            """
+        )
+        now_iso_seed = utcnow_iso()
         conn.execute(
             f"""
             INSERT OR IGNORE INTO {FUNDS_ANNUAL_TABLE} (year, allocated_amount, updated_at)
             VALUES (?, 0, ?)
             """,
-            (datetime.utcnow().year, now_iso_seed),
+            (utcnow().year, now_iso_seed),
         )
 
         # Fixed public_token per CHT so QR codes are stable (no change on refresh).
@@ -1486,7 +1521,7 @@ def init_db() -> None:
             {"public_token": "cht-gj03ef9012", "vehicle_number": "GJ 03 EF 9012", "destination": "Surat", "destination_pincode": "395001", "icn_number": "ICN-CTH-226-10023", "driver_name": "Dinesh Shah", "driver_mobile": "+91 98251 31415", "package_count": 86, "total_weight_kg": 3870.0, "nature_of_items": "3,4"},
             {"public_token": "cht-mp11in1616", "vehicle_number": "MP 11 IN 1616", "destination": "Indore", "destination_pincode": "452001", "icn_number": "ICN-CTH-226-10024", "driver_name": "Manish Joshi", "driver_mobile": "+91 93000 16171", "package_count": 91, "total_weight_kg": 4095.0, "nature_of_items": "1,2,3"},
         ]
-        rng = random.Random(datetime.utcnow().date().isoformat())
+        rng = random.Random(utcnow().date().isoformat())
         n_demo = len(demo_seed_base)
         delivered_n = max(3, min(n_demo // 3, 8))
         delayed_n = max(2, n_demo // 9)
@@ -1497,7 +1532,7 @@ def init_db() -> None:
             + ["On Route"] * onroute_n
         )
         rng.shuffle(status_pool)
-        today_d = datetime.utcnow().date()
+        today_d = utcnow().date()
         demo_seed = []
         for idx, (base_item, seed_status) in enumerate(zip(demo_seed_base, status_pool)):
             pin = (base_item.get("destination_pincode") or "").strip()
@@ -1585,8 +1620,8 @@ def init_db() -> None:
                         item["status"],
                         item.get("remarks") or "",
                         item.get("nature_of_items") or "",
-                        datetime.utcnow().isoformat(timespec="seconds"),
-                        datetime.utcnow().isoformat(timespec="seconds"),
+                        utcnow_iso(),
+                        utcnow_iso(),
                     ),
                 )
         else:
@@ -1617,8 +1652,8 @@ def init_db() -> None:
                         item["status"],
                         item.get("remarks") or "",
                         item.get("nature_of_items") or "",
-                        datetime.utcnow().isoformat(timespec="seconds"),
-                        datetime.utcnow().isoformat(timespec="seconds"),
+                        utcnow_iso(),
+                        utcnow_iso(),
                     ),
                 )
                 existing_vehicles.add(item["vehicle_number"])
@@ -1681,7 +1716,7 @@ def init_db() -> None:
                         s["eta"],
                         s["status"],
                         s["icn_number"],
-                        datetime.utcnow().isoformat(timespec="seconds"),
+                        utcnow_iso(),
                         s["vehicle_number"],
                     ),
                 )
@@ -2024,7 +2059,7 @@ def admin_login_submit(
         request.session["admin_2fa_code_one_time"] = one_time_code
         request.session["admin_2fa_code_device"] = device_code
         request.session["admin_2fa_expires_at"] = (
-            datetime.utcnow() + timedelta(minutes=10)
+            utcnow() + timedelta(minutes=10)
         ).isoformat(timespec="seconds")
         request.session["admin_2fa_email_status"] = "sent" if sent else (msg or "failed")
         return RedirectResponse(url="/admin/2fa", status_code=303)
@@ -2076,7 +2111,7 @@ def admin_2fa_submit(request: Request, otp_code: str = Form("")):
     expired = False
     try:
         exp_dt = datetime.fromisoformat(expires_at_raw) if expires_at_raw else None
-        expired = bool(exp_dt and datetime.utcnow() > exp_dt)
+        expired = bool(exp_dt and utcnow() > exp_dt)
     except Exception:
         expired = True
 
@@ -2149,6 +2184,64 @@ def admin_logout(request: Request):
     response = RedirectResponse(url=_admin_login_url(), status_code=303)
     response.delete_cookie("admin_device_token", path="/")
     return response
+
+
+def record_claim_event(
+    conn: sqlite3.Connection,
+    *,
+    public_token: str,
+    action: str,
+    actor: str = "",
+    note: str = "",
+) -> None:
+    """Append a row to the delivery-claim audit log. Best-effort (never raises)."""
+    try:
+        conn.execute(
+            f"""
+            INSERT INTO {DELIVERY_CLAIM_LOG_TABLE} (public_token, action, actor, note, at)
+            VALUES (?, ?, ?, ?, ?)
+            """,
+            (public_token, action, (actor or "")[:80], (note or "")[:280], utcnow_iso()),
+        )
+    except sqlite3.Error:
+        pass
+
+
+def fetch_recent_claim_log(
+    conn: sqlite3.Connection, limit: int = 10
+) -> list[dict]:
+    """Recent claim/approve/reject events for the dashboard activity list."""
+    rows = conn.execute(
+        f"""
+        SELECT l.public_token, l.action, l.actor, l.note, l.at,
+               d.vehicle_number, d.destination
+        FROM {DELIVERY_CLAIM_LOG_TABLE} l
+        LEFT JOIN {DISPATCH_TABLE} d ON d.public_token = l.public_token
+        ORDER BY l.id DESC
+        LIMIT ?
+        """,
+        (limit,),
+    ).fetchall()
+    out: list[dict] = []
+    now = datetime.now()
+    for r in rows:
+        d = dict(r)
+        at_dt = parse_dt(d.get("at") or "")
+        if at_dt:
+            mins = max(0, int((now - at_dt).total_seconds() // 60))
+            if mins < 60:
+                d["age"] = f"{mins} min ago" if mins != 1 else "1 min ago"
+            elif mins < 60 * 24:
+                h = mins // 60
+                d["age"] = f"{h} hr ago" if h != 1 else "1 hr ago"
+            else:
+                days = mins // (60 * 24)
+                d["age"] = f"{days} day ago" if days == 1 else f"{days} days ago"
+        else:
+            d["age"] = ""
+        d["at_display"] = fmt_display(d.get("at") or "")
+        out.append(d)
+    return out
 
 
 def fetch_pending_delivery_claims(conn: sqlite3.Connection, limit: int = 20) -> list[dict]:
@@ -2237,6 +2330,7 @@ def dashboard(
                 ).fetchone()[0],
             }
             pending_claims = fetch_pending_delivery_claims(conn, limit=20)
+            recent_claim_log = fetch_recent_claim_log(conn, limit=8)
         hero = rows[0] if rows else None
         map_marker_count = sum(
             1
@@ -2262,6 +2356,7 @@ def dashboard(
                 "weight_max": weight_max or "",
                 "stats": stats,
                 "pending_claims": pending_claims,
+                "recent_claim_log": recent_claim_log,
                 "hero": hero,
                 "depot_lat": DEPOT_LAT,
                 "depot_lng": DEPOT_LNG,
@@ -2467,7 +2562,7 @@ def create_consignment(
     _validate_dispatch_timeline_or_400(dispatch_date, eta_date)
     cht_cost_val = _parse_optional_inr_amount(cht_cost_amount)
     token = secrets.token_urlsafe(12)
-    now = datetime.utcnow().isoformat(timespec="seconds")
+    now = utcnow_iso()
 
     # Total weight is always taken from the form (weighbridge / manifest). Packages vary in size;
     # we do not derive total from "weight per package" × count.
@@ -2560,7 +2655,7 @@ def update_dispatch(
 ):
     status = status if status in VALID_STATUSES else "On Route"
     _validate_dispatch_timeline_or_400(dispatch_date, eta_date)
-    now = datetime.utcnow().isoformat(timespec="seconds")
+    now = utcnow_iso()
     cht_cost_val = _parse_optional_inr_amount(cht_cost_amount)
 
     # Total weight from form only (not derived from per-package × count).
@@ -3060,7 +3155,7 @@ def funds_budget_post(request: Request, year: int = Form(...), allocated_amount:
         raise HTTPException(status_code=400, detail="Invalid budget amount.")
     if amt < 0:
         raise HTTPException(status_code=400, detail="Budget cannot be negative.")
-    now = datetime.utcnow().isoformat(timespec="seconds")
+    now = utcnow_iso()
     with closing(get_conn()) as conn:
         conn.execute(
             f"""
@@ -3079,7 +3174,7 @@ def funds_budget_post(request: Request, year: int = Form(...), allocated_amount:
 @app.post("/admin/status/{token}")
 def set_dispatch_status(token: str, status: str = Form(...)):
     status = status if status in VALID_STATUSES else "On Route"
-    now = datetime.utcnow().isoformat(timespec="seconds")
+    now = utcnow_iso()
     with closing(get_conn()) as conn:
         conn.execute(
             f"UPDATE {DISPATCH_TABLE} SET status = ?, updated_at = ? WHERE public_token = ?",
@@ -3104,7 +3199,7 @@ def claim_delivery(
     note = (receiver_note or "").strip()[:280]
     if len(name) < 2:
         raise HTTPException(status_code=400, detail="Please enter your name (min 2 characters).")
-    now = datetime.utcnow().isoformat(timespec="seconds")
+    now = utcnow_iso()
     with closing(get_conn()) as conn:
         row = conn.execute(
             f"SELECT id, status FROM {DISPATCH_TABLE} WHERE public_token = ?",
@@ -3125,6 +3220,7 @@ def claim_delivery(
             """,
             (name, now, note, now, token),
         )
+        record_claim_event(conn, public_token=token, action="claimed", actor=name, note=note)
         conn.commit()
     return RedirectResponse(url=f"/dispatch/{token}?toast=claim-sent", status_code=303)
 
@@ -3132,7 +3228,7 @@ def claim_delivery(
 @app.post("/admin/approve-delivery/{token}")
 def approve_delivery(token: str):
     """Depot-side single-click approval: flips status to Delivered."""
-    now = datetime.utcnow().isoformat(timespec="seconds")
+    now = utcnow_iso()
     with closing(get_conn()) as conn:
         row = conn.execute(
             f"SELECT claim_delivered_by FROM {DISPATCH_TABLE} WHERE public_token = ?",
@@ -3152,6 +3248,12 @@ def approve_delivery(token: str):
             """,
             (now, token),
         )
+        record_claim_event(
+            conn,
+            public_token=token,
+            action="approved",
+            actor=(row["claim_delivered_by"] or "").strip(),
+        )
         conn.commit()
     return RedirectResponse(url="/?toast=approved", status_code=303)
 
@@ -3159,8 +3261,12 @@ def approve_delivery(token: str):
 @app.post("/admin/reject-delivery/{token}")
 def reject_delivery(token: str):
     """Clears the receiver's claim without changing status (was a mistake)."""
-    now = datetime.utcnow().isoformat(timespec="seconds")
+    now = utcnow_iso()
     with closing(get_conn()) as conn:
+        prev = conn.execute(
+            f"SELECT claim_delivered_by FROM {DISPATCH_TABLE} WHERE public_token = ?",
+            (token,),
+        ).fetchone()
         conn.execute(
             f"""
             UPDATE {DISPATCH_TABLE}
@@ -3171,6 +3277,12 @@ def reject_delivery(token: str):
             WHERE public_token = ?
             """,
             (now, token),
+        )
+        record_claim_event(
+            conn,
+            public_token=token,
+            action="rejected",
+            actor=(prev["claim_delivered_by"] if prev else "") or "",
         )
         conn.commit()
     return RedirectResponse(url="/?toast=rejected", status_code=303)
@@ -3204,7 +3316,7 @@ def delete_dispatch(token: str, remarks: str = Form("")):
         if not row:
             raise HTTPException(status_code=404, detail="Dispatch not found")
         r = dict(row)
-        now = datetime.utcnow().isoformat(timespec="seconds")
+        now = utcnow_iso()
         conn.execute(
             f"""
             INSERT INTO {DELETED_DISPATCHES_TABLE}

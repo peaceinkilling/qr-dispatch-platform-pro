@@ -80,48 +80,98 @@
         </div>
       </div>
 
-  {% if pending_claims and pending_claims|length > 0 %}
+  {% if (pending_claims and pending_claims|length > 0) or (recent_claim_log and recent_claim_log|length > 0) %}
   <section class="notif-panel glass-strong p-4 sm:p-5 mb-6 rd-26 card-hover reveal" aria-labelledby="notif-heading">
     <header class="notif-panel-head">
       <div class="notif-panel-head-text">
         <div class="notif-panel-kicker">Notifications</div>
-        <h2 id="notif-heading" class="notif-panel-title title">Delivery approvals pending</h2>
+        <h2 id="notif-heading" class="notif-panel-title title">
+          {% if pending_claims and pending_claims|length > 0 %}Delivery approvals pending{% else %}Delivery activity{% endif %}
+        </h2>
         <p class="notif-panel-lede muted2 text-sm mt-1">
-          Receiving units have reported these CHTs as delivered. Review and confirm from the depot.
+          {% if pending_claims and pending_claims|length > 0 %}
+            Receiving units have reported these CHTs as delivered. Review and confirm from the depot.
+          {% else %}
+            No pending approvals. Recent delivery activity is logged below.
+          {% endif %}
         </p>
       </div>
-      <span class="notif-panel-count">{{ pending_claims|length }}</span>
+      {% if pending_claims and pending_claims|length > 0 %}
+        <span class="notif-panel-count">{{ pending_claims|length }}</span>
+      {% endif %}
     </header>
-    <ul class="notif-list">
-      {% for c in pending_claims %}
-        <li class="notif-item">
-          <div class="notif-item-body">
-            <div class="notif-item-title">
-              <span class="notif-item-vehicle">{{ c.vehicle_number }}</span>
-              <span class="notif-item-arrow" aria-hidden="true">→</span>
-              <span class="notif-item-dest">{{ c.destination or "—" }}{% if c.destination_pincode %} · {{ c.destination_pincode }}{% endif %}</span>
+
+    {% if pending_claims and pending_claims|length > 0 %}
+      <ul class="notif-list">
+        {% for c in pending_claims %}
+          <li class="notif-item">
+            <div class="notif-item-body">
+              <div class="notif-item-title">
+                <span class="notif-item-vehicle">{{ c.vehicle_number }}</span>
+                <span class="notif-item-arrow" aria-hidden="true">→</span>
+                <span class="notif-item-dest">{{ c.destination or "—" }}{% if c.destination_pincode %} · {{ c.destination_pincode }}{% endif %}</span>
+              </div>
+              <div class="notif-item-meta">
+                Marked delivered by <strong>{{ c.claim_delivered_by }}</strong>
+                {% if c.claim_age %} · {{ c.claim_age }}{% endif %}
+                {% if c.claim_at_display %} · {{ c.claim_at_display }}{% endif %}
+              </div>
+              {% if c.claim_delivered_note %}
+                <div class="notif-item-note">“{{ c.claim_delivered_note }}”</div>
+              {% endif %}
             </div>
-            <div class="notif-item-meta">
-              Marked delivered by <strong>{{ c.claim_delivered_by }}</strong>
-              {% if c.claim_age %} · {{ c.claim_age }}{% endif %}
-              {% if c.claim_at_display %} · {{ c.claim_at_display }}{% endif %}
+            <div class="notif-item-actions">
+              <a href="/dispatch/{{ c.public_token }}" class="btn btn-ghost btn-sm" title="Open public dispatch">View</a>
+              <form
+                method="post"
+                action="/admin/reject-delivery/{{ c.public_token }}"
+                class="inline js-reject-form"
+                data-vehicle="{{ c.vehicle_number | e }}"
+                data-claimant="{{ c.claim_delivered_by | e }}"
+              >
+                <button type="submit" class="btn btn-ghost btn-sm" title="Discard this claim (no status change)">Reject</button>
+              </form>
+              <form
+                method="post"
+                action="/admin/approve-delivery/{{ c.public_token }}"
+                class="inline js-approve-form"
+                data-vehicle="{{ c.vehicle_number | e }}"
+                data-claimant="{{ c.claim_delivered_by | e }}"
+              >
+                <button type="submit" class="btn btn-primary btn-sm" title="Confirm delivery & mark Delivered">Confirm delivery</button>
+              </form>
             </div>
-            {% if c.claim_delivered_note %}
-              <div class="notif-item-note">“{{ c.claim_delivered_note }}”</div>
-            {% endif %}
-          </div>
-          <div class="notif-item-actions">
-            <a href="/dispatch/{{ c.public_token }}" class="btn btn-ghost btn-sm" title="Open public dispatch">View</a>
-            <form method="post" action="/admin/reject-delivery/{{ c.public_token }}" class="inline">
-              <button type="submit" class="btn btn-ghost btn-sm" title="Discard this claim (no status change)">Not yet</button>
-            </form>
-            <form method="post" action="/admin/approve-delivery/{{ c.public_token }}" class="inline">
-              <button type="submit" class="btn btn-primary btn-sm" title="Confirm delivery & mark Delivered">Approve</button>
-            </form>
-          </div>
-        </li>
-      {% endfor %}
-    </ul>
+          </li>
+        {% endfor %}
+      </ul>
+    {% endif %}
+
+    {% if recent_claim_log and recent_claim_log|length > 0 %}
+      <div class="notif-log-section">
+        <div class="notif-log-head">
+          <span class="notif-log-label">Recent activity</span>
+          <span class="notif-log-sub muted2 text-xs">Audit trail · last {{ recent_claim_log|length }} events</span>
+        </div>
+        <ul class="notif-log-list">
+          {% for e in recent_claim_log %}
+            <li class="notif-log-item notif-log-item--{{ e.action }}">
+              <span class="notif-log-dot" aria-hidden="true"></span>
+              <span class="notif-log-action">
+                {% if e.action == "approved" %}Approved
+                {% elif e.action == "rejected" %}Rejected
+                {% else %}Claimed{% endif %}
+              </span>
+              <span class="notif-log-body">
+                <strong>{{ e.vehicle_number or "—" }}</strong>
+                {% if e.destination %} → {{ e.destination }}{% endif %}
+                {% if e.actor %} · by {{ e.actor }}{% endif %}
+              </span>
+              <span class="notif-log-time muted2">{{ e.age or e.at_display }}</span>
+            </li>
+          {% endfor %}
+        </ul>
+      </div>
+    {% endif %}
   </section>
   {% endif %}
 
@@ -521,6 +571,43 @@
         form.addEventListener("change", syncExportHref);
         syncExportHref();
       }
+    })();
+  </script>
+
+  <script>
+    // --- Delivery-claim approve/reject confirmation dialogs ---
+    // Single-click is fast but risky for state changes; require an explicit
+    // confirmation step so an accidental click on the dashboard doesn't
+    // close out a CHT by mistake.
+    (function () {
+      function bindConfirm(selector, buildMessage) {
+        document.querySelectorAll(selector).forEach(function (form) {
+          form.addEventListener("submit", function (ev) {
+            var vehicle = form.getAttribute("data-vehicle") || "this CHT";
+            var claimant = form.getAttribute("data-claimant") || "";
+            var msg = buildMessage(vehicle, claimant);
+            if (!window.confirm(msg)) {
+              ev.preventDefault();
+              return false;
+            }
+            return true;
+          });
+        });
+      }
+      bindConfirm(".js-approve-form", function (vehicle, claimant) {
+        return (
+          "Confirm delivery of " + vehicle + "?\n\n" +
+          (claimant ? "Reported by: " + claimant + "\n" : "") +
+          "Status will be set to Delivered."
+        );
+      });
+      bindConfirm(".js-reject-form", function (vehicle, claimant) {
+        return (
+          "Discard delivery report for " + vehicle + "?\n\n" +
+          (claimant ? "Reported by: " + claimant + "\n" : "") +
+          "Status stays unchanged."
+        );
+      });
     })();
   </script>
 
