@@ -354,6 +354,45 @@ VALID_STATUSES = {"On Route", "Delivered"}
 # Default CHT capacity (kg). Each dispatch can override this via `cht_capacity_weight_kg`.
 CAPACITY_WEIGHT_KG = 5000.0
 
+# Depot rate book for demo CHTs (vehicle_number -> INR per trip).
+# The four starred values are the depot's actual quotes shared by the user
+# (Bhuj 8t / Sagar 8t / Jhansi 16t / Barmer 8t); the rest are calibrated
+# estimates that roughly track ~32–35 INR per km with a modest short-haul floor,
+# tuned so the annual-utilisation bars on the funds dashboard look believable.
+DEMO_CHT_COSTS: dict[str, float] = {
+    # Short haul (≤ 300 km from Banar)
+    "RJ 11 BM 2202": 7000.0,    # Barmer 8t       ★ quoted
+    "RJ 22 PK 6606": 5800.0,    # Pokhran
+    "RJ 18 AJ 4404": 7500.0,    # Ajmer
+    "RJ 09 NS 1101": 7800.0,    # Nasirabad
+    "RJ 14 MA 5505": 9000.0,    # Mount Abu
+    "GJ 08 AU 8678": 9200.0,    # Jaisalmer
+    "RJ 13 CD 5678": 9500.0,    # Udaipur
+    "RJ 23 SK 6060": 9800.0,    # Sikar
+    "RJ 08 OP 8642": 8200.0,    # Bikaner
+    "RJ 01 AB 1234": 11000.0,   # Jaipur
+    # Mid haul (300–550 km)
+    "GJ 18 GN 2020": 13000.0,   # Gandhinagar
+    "RJ 14 KC 9021": 14000.0,   # Ahmedabad
+    "RJ 02 KL 2468": 14500.0,   # Kota
+    "RJ 06 AL 8808": 15500.0,   # Alwar
+    "MP 11 IN 1616": 17000.0,   # Indore
+    "GJ 10 JM 3303": 18000.0,   # Jamnagar
+    "GJ 05 MN 1357": 19000.0,   # Vadodara
+    # Long haul (550 km+)
+    "GJ 12 BH 7707": 26900.0,   # Bhuj 8t         ★ quoted
+    "GJ 03 EF 9012": 21500.0,   # Surat
+    "MP 09 GH 3456": 29000.0,   # Bhopal
+    "MP 23 SG 7171": 32390.0,   # Sagar 8t        ★ quoted
+    "MP 07 GW 4040": 33000.0,   # Gwalior
+    "UP 93 JH 5050": 34900.0,   # Jhansi 16t      ★ quoted
+    "UP 76 BB 3030": 36000.0,   # Babina
+}
+
+# Annual fund allocation for the running year (INR). Shown on the funds portal
+# as the budget ceiling; per-CHT utilisation deducts from this.
+DEMO_ANNUAL_FUND_INR = 4500000.0  # 45 lakh
+
 # Depot: Banar, Rajasthan (PIN 342027, near Jodhpur).
 DEPOT_PINCODE = "342027"
 DEPOT_LAT = 26.3412647  # fallback if pincode lookup fails (aligned with map pin)
@@ -1348,6 +1387,7 @@ def init_db() -> None:
             # Madhya Pradesh
             ("452001", "Indore", "Madhya Pradesh", 22.7196, 75.8577),
             ("462001", "Bhopal", "Madhya Pradesh", 23.2599, 77.4126),
+            ("470001", "Sagar", "Madhya Pradesh", 23.8388, 78.7378),
             ("474001", "Gwalior", "Madhya Pradesh", 26.2183, 78.1828),
             # Maharashtra
             ("411001", "Pune", "Maharashtra", 18.5204, 73.8567),
@@ -1483,14 +1523,8 @@ def init_db() -> None:
                 ON {DELIVERY_CLAIM_LOG_TABLE}(public_token);
             """
         )
-        now_iso_seed = utcnow_iso()
-        conn.execute(
-            f"""
-            INSERT OR IGNORE INTO {FUNDS_ANNUAL_TABLE} (year, allocated_amount, updated_at)
-            VALUES (?, 0, ?)
-            """,
-            (utcnow().year, now_iso_seed),
-        )
+        # Fund row for the current year is created by the dedicated upsert near
+        # the end of init_db() once the demo seed has been applied.
 
         # Fixed public_token per CHT so QR codes are stable (no change on refresh).
         # Demo timelines: staggered dispatch dates and distance-aware ETA day ranges from Banar (342027).
@@ -1498,22 +1532,22 @@ def init_db() -> None:
         demo_seed_base = [
             {"public_token": "cht-gj08au8678", "vehicle_number": "GJ 08 AU 8678", "destination": "Jaisalmer", "destination_pincode": "345001", "icn_number": "ICN-CTH-226-10001", "driver_name": "Sattar Khan", "driver_mobile": "+91 98765 43210", "package_count": 95, "total_weight_kg": 4120.0, "nature_of_items": "1"},
             {"public_token": "cht-rj09ns1101", "vehicle_number": "RJ 09 NS 1101", "destination": "Nasirabad", "destination_pincode": "305601", "icn_number": "ICN-CTH-226-10002", "driver_name": "Ramesh Yadav", "driver_mobile": "+91 99887 76655", "package_count": 84, "total_weight_kg": 3760.0, "nature_of_items": "2"},
-            {"public_token": "cht-rj11bm2202", "vehicle_number": "RJ 11 BM 2202", "destination": "Barmer", "destination_pincode": "344001", "icn_number": "ICN-CTH-226-10003", "driver_name": "Imran Ali", "driver_mobile": "+91 91234 56780", "package_count": 79, "total_weight_kg": 3555.0, "nature_of_items": "3"},
+            {"public_token": "cht-rj11bm2202", "vehicle_number": "RJ 11 BM 2202", "destination": "Barmer", "destination_pincode": "344001", "icn_number": "ICN-CTH-226-10003", "driver_name": "Imran Ali", "driver_mobile": "+91 91234 56780", "package_count": 168, "total_weight_kg": 8000.0, "cht_capacity_weight_kg": 10000.0, "nature_of_items": "3"},
             {"public_token": "cht-gj10jm3303", "vehicle_number": "GJ 10 JM 3303", "destination": "Jamnagar", "destination_pincode": "361001", "icn_number": "ICN-CTH-226-10004", "driver_name": "Nafees Khan", "driver_mobile": "+91 90012 34567", "package_count": 88, "total_weight_kg": 3960.0, "nature_of_items": "1,3"},
             {"public_token": "cht-gj05mn1357", "vehicle_number": "GJ 05 MN 1357", "destination": "Vadodara", "destination_pincode": "390001", "icn_number": "ICN-CTH-226-10005", "driver_name": "Prakash Joshi", "driver_mobile": "+91 98765 77777", "package_count": 87, "total_weight_kg": 3915.0, "nature_of_items": "1,2"},
             {"public_token": "cht-rj18aj4404", "vehicle_number": "RJ 18 AJ 4404", "destination": "Ajmer", "destination_pincode": "305001", "icn_number": "ICN-CTH-226-10006", "driver_name": "Vikram Singh", "driver_mobile": "+91 98765 11111", "package_count": 92, "total_weight_kg": 4140.0, "nature_of_items": "2,4"},
             {"public_token": "cht-rj14ma5505", "vehicle_number": "RJ 14 MA 5505", "destination": "Mount Abu", "destination_pincode": "307501", "icn_number": "ICN-CTH-226-10007", "driver_name": "Mahendra Sharma", "driver_mobile": "+91 98765 22222", "package_count": 71, "total_weight_kg": 3185.0, "nature_of_items": "1,2,3"},
             {"public_token": "cht-rj22pk6606", "vehicle_number": "RJ 22 PK 6606", "destination": "Pokhran", "destination_pincode": "345023", "icn_number": "ICN-CTH-226-10008", "driver_name": "Rajesh Patel", "driver_mobile": "+91 98765 33333", "package_count": 83, "total_weight_kg": 3735.0, "nature_of_items": "4"},
             {"public_token": "cht-rj13cd5678", "vehicle_number": "RJ 13 CD 5678", "destination": "Udaipur", "destination_pincode": "313001", "icn_number": "ICN-CTH-226-10009", "driver_name": "Anil Verma", "driver_mobile": "+91 98765 44444", "package_count": 91, "total_weight_kg": 4095.0, "nature_of_items": "1,4"},
-            {"public_token": "cht-gj12bh7707", "vehicle_number": "GJ 12 BH 7707", "destination": "Bhuj", "destination_pincode": "370001", "icn_number": "ICN-CTH-226-10010", "driver_name": "Suresh Deshmukh", "driver_mobile": "+91 98765 55555", "package_count": 86, "total_weight_kg": 3870.0, "nature_of_items": "2"},
+            {"public_token": "cht-gj12bh7707", "vehicle_number": "GJ 12 BH 7707", "destination": "Bhuj", "destination_pincode": "370001", "icn_number": "ICN-CTH-226-10010", "driver_name": "Suresh Deshmukh", "driver_mobile": "+91 98765 55555", "package_count": 172, "total_weight_kg": 8000.0, "cht_capacity_weight_kg": 10000.0, "nature_of_items": "2"},
             {"public_token": "cht-rj06al8808", "vehicle_number": "RJ 06 AL 8808", "destination": "Alwar", "destination_pincode": "301001", "icn_number": "ICN-CTH-226-10011", "driver_name": "Deepak Meena", "driver_mobile": "+91 98765 66666", "package_count": 90, "total_weight_kg": 4050.0, "nature_of_items": "3,4"},
-            {"public_token": "cht-rj24ut9909", "vehicle_number": "RJ 24 UT 9909", "destination": "Utarlai", "destination_pincode": "344032", "icn_number": "ICN-CTH-226-10012", "driver_name": "Mohan Lal", "driver_mobile": "+91 98765 88888", "package_count": 80, "total_weight_kg": 3600.0, "nature_of_items": "2,3"},
+            {"public_token": "cht-mp23sg7171", "vehicle_number": "MP 23 SG 7171", "destination": "Sagar", "destination_pincode": "470001", "icn_number": "ICN-CTH-226-10012", "driver_name": "Mohan Lal", "driver_mobile": "+91 98765 88888", "package_count": 170, "total_weight_kg": 8000.0, "cht_capacity_weight_kg": 10000.0, "nature_of_items": "2,3"},
             {"public_token": "cht-rj14kc9021", "vehicle_number": "RJ 14 KC 9021", "destination": "Ahmedabad", "destination_pincode": "380001", "icn_number": "ICN-CTH-226-10013", "driver_name": "Sanjay Rao", "driver_mobile": "+91 98765 99999", "package_count": 99, "total_weight_kg": 4455.0, "nature_of_items": "1,3,4"},
             {"public_token": "cht-mp09gh3456", "vehicle_number": "MP 09 GH 3456", "destination": "Bhopal", "destination_pincode": "462001", "icn_number": "ICN-CTH-226-10014", "driver_name": "Arvind Saxena", "driver_mobile": "+91 98260 33445", "package_count": 96, "total_weight_kg": 4320.0, "nature_of_items": "1,4"},
             {"public_token": "cht-gj18gn2020", "vehicle_number": "GJ 18 GN 2020", "destination": "Gandhinagar", "destination_pincode": "382421", "icn_number": "ICN-CTH-226-10015", "driver_name": "Hitesh Modi", "driver_mobile": "+91 98250 55667", "package_count": 81, "total_weight_kg": 3645.0, "nature_of_items": "2,3"},
             {"public_token": "cht-up76bb3030", "vehicle_number": "UP 76 BB 3030", "destination": "Babina", "destination_pincode": "284501", "icn_number": "ICN-CTH-226-10016", "driver_name": "Ravi Yadav", "driver_mobile": "+91 98370 77889", "package_count": 88, "total_weight_kg": 3960.0, "nature_of_items": "3"},
             {"public_token": "cht-mp07gw4040", "vehicle_number": "MP 07 GW 4040", "destination": "Gwalior", "destination_pincode": "474001", "icn_number": "ICN-CTH-226-10017", "driver_name": "Pankaj Tomar", "driver_mobile": "+91 97520 99001", "package_count": 93, "total_weight_kg": 4185.0, "nature_of_items": "1,2"},
-            {"public_token": "cht-up93jh5050", "vehicle_number": "UP 93 JH 5050", "destination": "Jhansi", "destination_pincode": "284001", "icn_number": "ICN-CTH-226-10018", "driver_name": "Amit Dubey", "driver_mobile": "+91 94500 22334", "package_count": 85, "total_weight_kg": 3825.0, "nature_of_items": "4"},
+            {"public_token": "cht-up93jh5050", "vehicle_number": "UP 93 JH 5050", "destination": "Jhansi", "destination_pincode": "284001", "icn_number": "ICN-CTH-226-10018", "driver_name": "Amit Dubey", "driver_mobile": "+91 94500 22334", "package_count": 340, "total_weight_kg": 16000.0, "cht_capacity_weight_kg": 20000.0, "nature_of_items": "4"},
             {"public_token": "cht-rj02kl2468", "vehicle_number": "RJ 02 KL 2468", "destination": "Kota", "destination_pincode": "324001", "icn_number": "ICN-CTH-226-10019", "driver_name": "Lokesh Gurjar", "driver_mobile": "+91 94600 44556", "package_count": 94, "total_weight_kg": 4230.0, "nature_of_items": "3,4"},
             {"public_token": "cht-rj01ab1234", "vehicle_number": "RJ 01 AB 1234", "destination": "Jaipur", "destination_pincode": "302001", "icn_number": "ICN-CTH-226-10020", "driver_name": "Harish Choudhary", "driver_mobile": "+91 94140 66778", "package_count": 101, "total_weight_kg": 4545.0, "nature_of_items": "1,2,4"},
             {"public_token": "cht-rj23sk6060", "vehicle_number": "RJ 23 SK 6060", "destination": "Sikar", "destination_pincode": "332001", "icn_number": "ICN-CTH-226-10021", "driver_name": "Bhagirath Singh", "driver_mobile": "+91 99280 88990", "package_count": 89, "total_weight_kg": 4005.0, "nature_of_items": "2"},
@@ -1552,28 +1586,29 @@ def init_db() -> None:
             transit = rng.randint(dmin, dmax)
 
             if seed_status == "Delivered":
-                # Completed recently — ETA in the past, dispatched a transit-window earlier.
-                eta_dt = today_d - timedelta(days=rng.randint(1, 18))
-                dispatch_dt = eta_dt - timedelta(days=transit + rng.randint(0, 3))
+                # Completed in the last week or two — ETA just in the past,
+                # dispatched a transit-window earlier.
+                eta_dt = today_d - timedelta(days=rng.randint(1, 10))
+                dispatch_dt = eta_dt - timedelta(days=transit + rng.randint(0, 2))
             elif seed_status == "Delayed":
                 # ETA just slipped into the past; still in transit.
-                eta_dt = today_d - timedelta(days=rng.randint(1, 5))
+                eta_dt = today_d - timedelta(days=rng.randint(1, 3))
                 dispatch_dt = eta_dt - timedelta(days=transit + rng.randint(0, 2))
             else:
-                # On Route — three realistic buckets:
-                #   A) Just dispatched (today / yesterday), arriving next few days/weeks
-                #   B) Dispatched this week, mid-transit, ETA this week or next
-                #   C) Dispatched 1–2 weeks back, long-haul, ETA further out
+                # On Route — three realistic buckets biased toward "this week":
+                #   A) Dispatched today / yesterday, ETA later this week or next
+                #   B) Dispatched 2–4 days ago, mid-transit
+                #   C) Dispatched 5–9 days ago, long-haul, ETA still ahead
                 bucket = rng.random()
-                if bucket < 0.30:
-                    dispatch_dt = today_d - timedelta(days=rng.randint(0, 2))
-                    eta_dt = dispatch_dt + timedelta(days=transit + rng.randint(0, 3))
-                elif bucket < 0.70:
-                    dispatch_dt = today_d - timedelta(days=rng.randint(3, 6))
-                    eta_dt = dispatch_dt + timedelta(days=transit + rng.randint(0, 3))
+                if bucket < 0.45:
+                    dispatch_dt = today_d - timedelta(days=rng.randint(0, 1))
+                    eta_dt = dispatch_dt + timedelta(days=transit + rng.randint(0, 2))
+                elif bucket < 0.80:
+                    dispatch_dt = today_d - timedelta(days=rng.randint(2, 4))
+                    eta_dt = dispatch_dt + timedelta(days=transit + rng.randint(0, 2))
                 else:
-                    dispatch_dt = today_d - timedelta(days=rng.randint(7, 13))
-                    eta_dt = dispatch_dt + timedelta(days=transit + rng.randint(2, 6))
+                    dispatch_dt = today_d - timedelta(days=rng.randint(5, 9))
+                    eta_dt = dispatch_dt + timedelta(days=transit + rng.randint(1, 4))
                 # On-route rows must still have ETA strictly in the future.
                 if eta_dt <= today_d:
                     eta_dt = today_d + timedelta(days=rng.randint(2, max(3, transit)))
@@ -1739,7 +1774,7 @@ def init_db() -> None:
                     WHEN 'RJ 13 CD 5678' THEN 'Udaipur'
                     WHEN 'GJ 12 BH 7707' THEN 'Bhuj'
                     WHEN 'RJ 06 AL 8808' THEN 'Alwar'
-                    WHEN 'RJ 24 UT 9909' THEN 'Utarlai'
+                    WHEN 'MP 23 SG 7171' THEN 'Sagar'
                     WHEN 'RJ 14 KC 9021' THEN 'Ahmedabad'
                     WHEN 'MP 09 GH 3456' THEN 'Bhopal'
                     WHEN 'GJ 18 GN 2020' THEN 'Gandhinagar'
@@ -1766,7 +1801,7 @@ def init_db() -> None:
                     WHEN 'RJ 13 CD 5678' THEN '313001'
                     WHEN 'GJ 12 BH 7707' THEN '370001'
                     WHEN 'RJ 06 AL 8808' THEN '301001'
-                    WHEN 'RJ 24 UT 9909' THEN '344032'
+                    WHEN 'MP 23 SG 7171' THEN '470001'
                     WHEN 'RJ 14 KC 9021' THEN '380001'
                     WHEN 'MP 09 GH 3456' THEN '462001'
                     WHEN 'GJ 18 GN 2020' THEN '382421'
@@ -1812,6 +1847,58 @@ def init_db() -> None:
             f"DELETE FROM {DISPATCH_TABLE} WHERE vehicle_number = ?",
             ("RJ 03 JD 6060",),
         )
+        # Utarlai (344032) was close to Banar and redundant with Barmer — replaced
+        # with Sagar (MP, 470001) so the rate book + MP coverage line up with the
+        # depot's real quotes (Bhuj / Sagar / Jhansi / Barmer).
+        conn.execute(
+            f"DELETE FROM {DISPATCH_TABLE} WHERE vehicle_number = ?",
+            ("RJ 24 UT 9909",),
+        )
+
+        # Apply per-CHT capacity + cost rate book to the demo rows. We overwrite
+        # capacity/cost every run so swapping the seed values actually propagates
+        # to an existing DB. User-created (non-demo) rows are untouched because
+        # they are filtered by vehicle_number.
+        for seed_item in demo_seed:
+            vn = seed_item["vehicle_number"]
+            cap = seed_item.get("cht_capacity_weight_kg") or CAPACITY_WEIGHT_KG
+            cost = DEMO_CHT_COSTS.get(vn)
+            conn.execute(
+                f"""
+                UPDATE {DISPATCH_TABLE}
+                SET cht_capacity_weight_kg = ?,
+                    cht_cost_amount = COALESCE(?, cht_cost_amount),
+                    updated_at = ?
+                WHERE vehicle_number = ?
+                """,
+                (float(cap), cost, utcnow_iso(), vn),
+            )
+
+        # Fund allocation for the current year = 45 lakh (depot-supplied figure).
+        # Inserts a fresh row when missing; on conflict, only bumps the value if
+        # the stored allocation is still the legacy default (<= 0) so admin
+        # overrides made via the funds portal UI are preserved across restarts.
+        conn.execute(
+            f"""
+            INSERT INTO {FUNDS_ANNUAL_TABLE} (year, allocated_amount, updated_at)
+            VALUES (?, ?, ?)
+            ON CONFLICT(year) DO UPDATE SET
+              allocated_amount = CASE
+                WHEN {FUNDS_ANNUAL_TABLE}.allocated_amount IS NULL
+                  OR {FUNDS_ANNUAL_TABLE}.allocated_amount <= 0
+                THEN excluded.allocated_amount
+                ELSE {FUNDS_ANNUAL_TABLE}.allocated_amount
+              END,
+              updated_at = CASE
+                WHEN {FUNDS_ANNUAL_TABLE}.allocated_amount IS NULL
+                  OR {FUNDS_ANNUAL_TABLE}.allocated_amount <= 0
+                THEN excluded.updated_at
+                ELSE {FUNDS_ANNUAL_TABLE}.updated_at
+              END
+            """,
+            (utcnow().year, float(DEMO_ANNUAL_FUND_INR), utcnow_iso()),
+        )
+
         conn.commit()
 
 
