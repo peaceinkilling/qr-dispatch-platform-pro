@@ -100,7 +100,12 @@ OSRM_SNAP_ENDPOINTS = os.environ.get("OSRM_SNAP_ENDPOINTS", "true").strip().lowe
 
 # Funds portal (admin-only UI + extra PIN). Change via FUNDS_PORTAL_PIN in production.
 FUNDS_PORTAL_PIN = os.environ.get("FUNDS_PORTAL_PIN", "212141").strip()
+# Stricter PIN to revise an already-set annual allocation mid-year (e.g. a
+# supplementary grant). Separate from the view-portal PIN so mid-year edits
+# stay intentional — the amount can move real rupees around the balance bar.
+FUNDS_AMEND_PIN = os.environ.get("FUNDS_AMEND_PIN", "232343").strip()
 FUNDS_ANNUAL_TABLE = "fund_annual_budget"
+FUNDS_REVISIONS_TABLE = "fund_allocation_revisions"
 DISPATCH_TABLE = "dispatches"
 LOCATIONS_TABLE = "locations"
 PIN_CODES_TABLE = "pincodes"
@@ -1492,6 +1497,24 @@ def init_db() -> None:
             );
             """
         )
+        # Append-only audit trail of fund allocation changes (base-set and mid-year
+        # amendments). Keeps a paper trail for "who added ₹5L on 21 Apr and why".
+        conn.executescript(
+            f"""
+            CREATE TABLE IF NOT EXISTS {FUNDS_REVISIONS_TABLE} (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                year INTEGER NOT NULL,
+                delta_amount REAL NOT NULL,
+                new_total REAL NOT NULL,
+                kind TEXT NOT NULL DEFAULT 'amend',
+                note TEXT NOT NULL DEFAULT '',
+                actor TEXT NOT NULL DEFAULT '',
+                at TEXT NOT NULL
+            );
+            CREATE INDEX IF NOT EXISTS idx_fund_rev_year
+                ON {FUNDS_REVISIONS_TABLE}(year, at DESC);
+            """
+        )
 
         # Persistent OSRM route cache so road polylines survive restarts
         # and every new dispatch contributes back to the shared cache.
@@ -2810,6 +2833,275 @@ def _clamp_report_year(y: Optional[int]) -> int:
     return y
 
 
+def _fetch_allocation_revisions(
+    conn: sqlite3.Connection, year: int, limit: int = 6
+) -> list[dict[str, Any]]:
+    """Recent allocation changes for `year`, newest first, display-ready."""
+    rows = conn.execute(
+        f"""
+        SELECT id, year, delta_amount, new_total, kind, note, actor, at
+        FROM {FUNDS_REVISIONS_TABLE}
+        WHERE year = ?
+        ORDER BY datetime(at) DESC, id DESC
+        LIMIT ?
+        """,
+        (year, limit),
+    ).fetchall()
+    out: list[dict[str, Any]] = []
+    for r in rows:
+        d = float(r["delta_amount"] or 0.0)
+        total = float(r["new_total"] or 0.0)
+        sign = "+" if d >= 0 else "−"
+        out.append(
+            {
+                "id": int(r["id"]),
+                "year": int(r["year"]),
+                "delta": d,
+                "delta_display": f"{sign}₹{abs(d):,.0f}",
+                "delta_is_positive": d >= 0,
+                "new_total": total,
+                "new_total_display": f"₹{total:,.0f}",
+                "kind": (r["kind"] or "amend").strip() or "amend",
+                "note": (r["note"] or "").strip(),
+                "actor": (r["actor"] or "").strip(),
+                "at": r["at"],
+                "at_display": fmt_display(r["at"] or ""),
+            }
+        )
+    return out
+
+
+# Truck-class rate card. A flat ₹/kg·km formula is misleading because a 500 kg
+# parcel and a 16-tonne load don't travel on the same vehicle — the per-km rate
+# is driven by the truck class the load books. Values below are calibrated
+# against the depot's own rate book:
+#   Barmer 8t / 215 km → ₹7,000     (≈ ₹33/km, medium truck)
+#   Bhuj   8t / 815 km → ₹26,900    (≈ ₹33/km, medium truck)
+#   Sagar  8t / 950 km → ₹32,390    (≈ ₹34/km, medium truck)
+#   Jhansi 16t / 1050 km → ₹34,900  (≈ ₹33/km, large truck — economies of scale)
+# So rate is (broadly) per-km of truck, not per-kg·km. The tonnage drives which
+# truck class you book, which in turn sets the ₹/km and the floor.
+TRUCK_CLASSES: list[tuple[float, str, float, float]] = [
+    # (max_tonnes, label,                 rate_per_km, floor_inr)
+    (1.0,    "Pickup (≤ 1 t)",             18.0,  2_000.0),
+    (3.0,    "LCV (≤ 3 t)",                24.0,  3_000.0),
+    (8.0,    "Medium truck (≤ 8 t)",       33.0,  4_500.0),
+    (16.0,   "Large truck (≤ 16 t)",       40.0,  8_000.0),
+    (float("inf"), "Multi-axle (> 16 t)",  48.0, 12_000.0),
+]
+
+# Haversine gives crow-flies distance; real road km run ~1.3–1.4× longer on
+# Indian highways, and the depot rate book is obviously priced on road km.
+# Without this factor an 8-t Bhuj trip (depot quote ₹26,900) would formula-price
+# at only ~₹16,500 from 500 km crow-flies × ₹33/km, and a 16-t plan to the same
+# place would come in *below* the 8-t history — the exact bug that flagged this.
+ROAD_DISTANCE_FACTOR = 1.35
+
+
+def _truck_class_for_tonnes(tonnes: float) -> tuple[str, float, float, float]:
+    """Return (label, rate_per_km, floor_inr, class_cap_tonnes) for a load size."""
+    for cap, label, rate, floor in TRUCK_CLASSES:
+        if tonnes <= cap:
+            return (label, rate, floor, cap)
+    # Shouldn't reach here because the last row has inf cap, but for safety:
+    label, rate, floor, cap = TRUCK_CLASSES[-1][1], TRUCK_CLASSES[-1][2], TRUCK_CLASSES[-1][3], TRUCK_CLASSES[-1][0]
+    return (label, rate, floor, cap)
+
+
+def _formula_cost_for(km_crow: float, tonnes: float) -> tuple[float, str, float, float, float]:
+    """Formula estimate: road-km × truck-class ₹/km, bounded below by a floor.
+    Returns (cost, class_label, rate_per_km, floor, road_km)."""
+    label, rate, floor, _cap = _truck_class_for_tonnes(tonnes)
+    road_km = km_crow * ROAD_DISTANCE_FACTOR
+    cost = max(floor, round(road_km * rate, 0))
+    return (cost, label, rate, floor, road_km)
+
+
+def _plan_cht_cost(
+    conn: sqlite3.Connection,
+    destination: str,
+    weight_kg: float,
+    allocated: float,
+    spent: float,
+) -> dict[str, Any]:
+    """
+    Planner: estimate a CHT's cost given destination (name or PIN) + tonnage,
+    and project the impact on this year's balance.
+
+    Cost model:
+      • The per-km rate is tied to the truck class the load books (see
+        TRUCK_CLASSES). It is NOT a flat per-kg·km figure because that would
+        misprice small parcels and very heavy loads alike.
+      • If prior costed trips exist on the same lane AT A SIMILAR TRUCK CLASS,
+        their average ₹/trip is blended with the formula (history is usually
+        more authoritative because it reflects depot-quoted rates).
+      • If history exists but at a *different* truck class (e.g. the lane only
+        has 8-t records and the admin is planning a 16-t), we fall back to the
+        formula so the estimate scales correctly with tonnage.
+    """
+    result: dict[str, Any] = {
+        "requested": True,
+        "destination": destination.strip(),
+        "weight_kg": weight_kg,
+        "tonnes": 0.0,
+        "tonnes_display": "—",
+        "valid": False,
+        "error": None,
+        "estimated_cost": None,
+        "estimated_cost_display": "—",
+        "rate_per_tonne_display": "—",
+        "source": "",
+        "source_kind": "",  # 'history' | 'blended' | 'formula'
+        "truck_class": "",
+        "rate_per_km_display": "—",
+        "distance_km": None,
+        "projected_balance": None,
+        "projected_balance_display": "—",
+        "fits_in_budget": None,
+        "how_many_more": None,
+        "share_of_balance_pct": None,
+    }
+    dest = result["destination"]
+    if not dest:
+        return {**result, "requested": False}
+    try:
+        w_kg = float(weight_kg)
+    except (TypeError, ValueError):
+        result["error"] = "Enter a valid weight in kg."
+        return result
+    if w_kg <= 0:
+        result["error"] = "Weight must be greater than 0 kg."
+        return result
+    tonnes = w_kg / 1000.0
+    result["tonnes"] = round(tonnes, 2)
+    result["tonnes_display"] = f"{tonnes:,.2f} t"
+
+    planned_class, planned_rate, planned_floor, planned_cap = _truck_class_for_tonnes(tonnes)
+    result["truck_class"] = planned_class
+    result["rate_per_km_display"] = f"₹{planned_rate:,.0f} / km"
+
+    # Resolve destination → (place_name, lat, lng, pincode) for distance calc.
+    pin_row = None
+    if dest.isdigit() and len(dest) == 6:
+        pin_row = conn.execute(
+            f"SELECT pincode, place_name, lat, lng FROM {PIN_CODES_TABLE} WHERE pincode = ?",
+            (dest,),
+        ).fetchone()
+    if not pin_row:
+        pin_row = conn.execute(
+            f"""SELECT pincode, place_name, lat, lng FROM {PIN_CODES_TABLE}
+                WHERE LOWER(TRIM(place_name)) = LOWER(?) LIMIT 1""",
+            (dest,),
+        ).fetchone()
+
+    # Historical lookup — costed trips on the same destination or pincode.
+    hist_rows = conn.execute(
+        f"""
+        SELECT cht_cost_amount, total_weight_kg
+        FROM {DISPATCH_TABLE}
+        WHERE (LOWER(TRIM(destination)) = LOWER(?)
+               OR TRIM(destination_pincode) = ?)
+          AND cht_cost_amount IS NOT NULL AND cht_cost_amount > 0
+          AND total_weight_kg IS NOT NULL AND total_weight_kg > 0
+        """,
+        (dest, dest),
+    ).fetchall()
+
+    # Bucket historical trips by the truck class their weight implies, so a
+    # 16-t lane's history doesn't distort an 8-t plan (or vice versa).
+    same_class_costs: list[float] = []
+    other_class_costs: list[float] = []
+    for r in hist_rows:
+        c = float(r["cht_cost_amount"])
+        w_t = float(r["total_weight_kg"]) / 1000.0
+        _, _, _, h_cap = _truck_class_for_tonnes(w_t)
+        if abs(h_cap - planned_cap) < 1e-6:
+            same_class_costs.append(c)
+        else:
+            other_class_costs.append(c)
+
+    road_km: Optional[float] = None
+    formula_cost: Optional[float] = None
+    if pin_row is not None:
+        crow_km = haversine_km(
+            DEPOT_LAT, DEPOT_LNG, float(pin_row["lat"]), float(pin_row["lng"])
+        )
+        formula_cost, _, _, _, road_km = _formula_cost_for(crow_km, tonnes)
+        result["distance_km"] = round(road_km, 1)
+
+    est: Optional[float] = None
+    place_name = (pin_row["place_name"] if pin_row else dest) or dest
+
+    if same_class_costs and formula_cost is not None:
+        hist_avg = sum(same_class_costs) / len(same_class_costs)
+        # 60% history / 40% formula blend — history tends to be the depot's
+        # actual quoted rate, but we anchor it to the distance model so
+        # single-trip outliers don't dominate.
+        est = round(0.6 * hist_avg + 0.4 * formula_cost, 0)
+        n = len(same_class_costs)
+        trip_word = "trip" if n == 1 else "trips"
+        result["source_kind"] = "blended"
+        result["source"] = (
+            f"Blend of {n} prior {planned_class.split(' (')[0].lower()} "
+            f"{trip_word} on this lane (avg ₹{hist_avg:,.0f}) and distance model "
+            f"(~{road_km:.0f} road km × ₹{planned_rate:.0f}/km)."
+        )
+    elif same_class_costs:
+        # Have history but couldn't geocode — use history alone.
+        hist_avg = sum(same_class_costs) / len(same_class_costs)
+        est = round(hist_avg, 0)
+        n = len(same_class_costs)
+        trip_word = "trip" if n == 1 else "trips"
+        result["source_kind"] = "history"
+        result["source"] = (
+            f"Average of {n} prior {planned_class.split(' (')[0].lower()} "
+            f"{trip_word} on this lane (₹{hist_avg:,.0f}). No distance model "
+            f"applied — pincode not geocoded."
+        )
+    elif formula_cost is not None and road_km is not None:
+        est = formula_cost
+        result["source_kind"] = "formula"
+        note = ""
+        if other_class_costs:
+            other_avg = sum(other_class_costs) / len(other_class_costs)
+            note = (
+                f" Prior trips to {place_name} used a different truck class "
+                f"(avg ₹{other_avg:,.0f}); the estimate above re-scales to a "
+                f"{planned_class.lower()}."
+            )
+        result["source"] = (
+            f"Distance model: ~{road_km:.0f} road km × ₹{planned_rate:.0f}/km "
+            f"(floor ₹{planned_floor:,.0f}) for a {planned_class.lower()}."
+            f"{note}"
+        )
+    else:
+        result["error"] = (
+            f"No prior trip to “{dest}” and no pincode match in the depot "
+            "geocode table. Add a dispatch to this lane first, or enter a "
+            "known 6-digit pincode."
+        )
+        return result
+
+    rate_per_t = (est / tonnes) if tonnes > 0 else 0.0
+    result["rate_per_tonne_display"] = f"₹{rate_per_t:,.0f} / tonne"
+
+    balance = allocated - spent
+    after = balance - (est or 0.0)
+    result["valid"] = True
+    result["estimated_cost"] = est
+    result["estimated_cost_display"] = f"₹{est:,.0f}"
+    result["projected_balance"] = after
+    result["projected_balance_display"] = f"₹{after:,.0f}"
+    result["fits_in_budget"] = after >= 0 and allocated > 0
+    if est and est > 0 and balance > 0:
+        result["how_many_more"] = max(0, int(balance // est))
+    else:
+        result["how_many_more"] = 0
+    if allocated > 0 and est:
+        result["share_of_budget_pct"] = round((est / allocated) * 100.0, 1)
+    return result
+
+
 @app.get("/admin/funds")
 def funds_entry(request: Request):
     if not request.session.get("admin_authenticated"):
@@ -2862,6 +3154,8 @@ def funds_dashboard(
     status: str = "All",
     df: str = "",
     dt: str = "",
+    plan_dest: str = "",
+    plan_weight_kg: Optional[float] = None,
 ):
     if not request.session.get("admin_authenticated"):
         return RedirectResponse(url=_admin_login_url(str(request.url)), status_code=307)
@@ -2972,6 +3266,41 @@ def funds_dashboard(
             (y0, y1),
         ).fetchall()
 
+        # Cost efficiency: ₹/tonne per destination (lanes with >= 1 costed+weighed
+        # trip). Sorted descending so the most expensive per-unit-freight lanes
+        # surface first — useful for rate renegotiation.
+        eff_raw = conn.execute(
+            f"""
+            SELECT COALESCE(NULLIF(TRIM(destination), ''), '(No destination)') AS d,
+                   SUM(cht_cost_amount) AS total_cost,
+                   SUM(total_weight_kg) AS total_kg,
+                   COUNT(*) AS n
+            FROM {DISPATCH_TABLE}
+            WHERE dispatch_date >= ? AND dispatch_date < ?
+              AND cht_cost_amount IS NOT NULL AND cht_cost_amount > 0
+              AND total_weight_kg IS NOT NULL AND total_weight_kg > 0
+            GROUP BY d
+            HAVING SUM(total_weight_kg) > 0
+            ORDER BY (SUM(cht_cost_amount) * 1000.0 / SUM(total_weight_kg)) DESC
+            LIMIT 6
+            """,
+            (y0, y1),
+        ).fetchall()
+
+        # Revision history for the selected year (newest first, capped).
+        revisions = _fetch_allocation_revisions(conn, y, limit=6)
+
+        # Planner: if the admin submitted destination + weight, estimate cost.
+        # Uses the full-year spent total as the "money already committed" figure
+        # because that's what currently drives the balance-bar in the hero.
+        plan_result = _plan_cht_cost(
+            conn,
+            destination=plan_dest or "",
+            weight_kg=float(plan_weight_kg or 0.0),
+            allocated=float(allocated),
+            spent=float(spent),
+        )
+
         sql = f"""
             SELECT public_token, icn_number, vehicle_number, destination, destination_pincode,
                    dispatch_date, status, cht_cost_amount
@@ -3045,28 +3374,69 @@ def funds_dashboard(
 
     st_spend = {str(r["status"]): float(r["s"] or 0) for r in status_spend_raw}
     spend_total_st = sum(st_spend.values()) or 0.0
-    status_spend_segments: list[dict[str, Any]] = []
-    donut_parts: list[str] = []
-    cum = 0.0
-    for st in status_order:
-        amt = st_spend.get(st, 0.0)
-        pct = (amt / spend_total_st * 100.0) if spend_total_st > 0 else 0.0
-        col = status_colors.get(st, "#94a3b8")
-        status_spend_segments.append(
-            {
-                "status": st,
-                "amount": amt,
-                "amount_display": f"₹{amt:,.2f}",
-                "pct": round(pct, 1),
-                "bar_pct": round(pct, 2),
-                "color": col,
-            }
-        )
-        if spend_total_st > 0 and pct > 0:
-            nxt = min(100.0, cum + pct)
-            donut_parts.append(f"{col} {cum:.4f}% {nxt:.4f}%")
-            cum = nxt
-    donut_spend_style = f"conic-gradient({', '.join(donut_parts)})" if donut_parts else "conic-gradient(#334155 0% 100%)"
+
+    # "Spend position" — collapses the transient status mix into the two buckets
+    # that actually matter for the budget: Realized (paid, i.e. Delivered) vs
+    # In-flight (committed but not yet behind us = On Route + Delayed).
+    realized_amt = float(st_spend.get("Delivered", 0.0))
+    in_flight_amt = float(
+        st_spend.get("On Route", 0.0) + st_spend.get("Delayed", 0.0)
+    )
+    position_total = realized_amt + in_flight_amt
+    realized_pct = (
+        round((realized_amt / position_total) * 100.0, 1) if position_total > 0 else 0.0
+    )
+    in_flight_pct = (
+        round((in_flight_amt / position_total) * 100.0, 1) if position_total > 0 else 0.0
+    )
+    realized_budget_pct = (
+        round((realized_amt / allocated) * 100.0, 1) if allocated > 0 else None
+    )
+    in_flight_budget_pct = (
+        round((in_flight_amt / allocated) * 100.0, 1) if allocated > 0 else None
+    )
+    spend_position = {
+        "realized": realized_amt,
+        "realized_display": f"₹{realized_amt:,.0f}",
+        "realized_pct_of_spend": realized_pct,
+        "realized_pct_of_budget": realized_budget_pct,
+        "in_flight": in_flight_amt,
+        "in_flight_display": f"₹{in_flight_amt:,.0f}",
+        "in_flight_pct_of_spend": in_flight_pct,
+        "in_flight_pct_of_budget": in_flight_budget_pct,
+        "total": position_total,
+        "has_data": position_total > 0,
+    }
+
+    # Cost efficiency list (₹/tonne by lane) — actionable for rate negotiation
+    # because it compares lanes on cost-per-unit-freight, not raw totals.
+    cost_efficiency: list[dict[str, Any]] = []
+    eff_rows = [dict(r) for r in eff_raw]
+    if eff_rows:
+        max_rate = 0.0
+        for r in eff_rows:
+            total_cost = float(r["total_cost"] or 0)
+            total_kg = float(r["total_kg"] or 0)
+            if total_kg <= 0:
+                continue
+            rate = total_cost * 1000.0 / total_kg  # ₹ per tonne
+            r["rate_per_tonne"] = rate
+            if rate > max_rate:
+                max_rate = rate
+        max_rate = max_rate or 1.0
+        for r in eff_rows:
+            rate = float(r.get("rate_per_tonne") or 0)
+            if rate <= 0:
+                continue
+            cost_efficiency.append(
+                {
+                    "name": str(r["d"])[:42],
+                    "rate_per_tonne": rate,
+                    "rate_display": f"₹{rate:,.0f}/t",
+                    "n": int(r["n"] or 0),
+                    "w_pct": min(100.0, (rate / max_rate) * 100.0),
+                }
+            )
 
     by_month: dict[int, float] = {}
     for r in month_raw:
@@ -3131,9 +3501,12 @@ def funds_dashboard(
     for qn, (ma, mb) in enumerate([(1, 3), (4, 6), (7, 9), (10, 12)], start=1):
         qsum = sum(by_month.get(mi, 0.0) for mi in range(ma, mb + 1))
         quarters_out.append({"q": qn, "label": f"Q{qn}", "amount": qsum, "amount_display": f"₹{qsum:,.0f}"})
-    max_q = max((q["amount"] for q in quarters_out), default=0.0) or 1.0
-    for q in quarters_out:
-        q["w_pct"] = min(100.0, (q["amount"] / max_q) * 100.0)
+    # NB: iterate with a distinct name — the route parameter `q` is the search
+    # string that ships to the template; an inner `for q in …` would shadow it
+    # and make the Search input render the last quarter's dict repr.
+    max_q_amt = max((qd["amount"] for qd in quarters_out), default=0.0) or 1.0
+    for qd in quarters_out:
+        qd["w_pct"] = min(100.0, (qd["amount"] / max_q_amt) * 100.0)
 
     forecast_projected: Optional[float] = None
     forecast_vs_budget_pct: Optional[float] = None
@@ -3200,9 +3573,6 @@ def funds_dashboard(
             "over_budget_pct": round(over_budget_pct, 1),
             "is_over_budget": is_over_budget,
             "has_budget": allocated > 0,
-            "status_mix": status_mix,
-            "status_spend_segments": status_spend_segments,
-            "donut_spend_style": donut_spend_style,
             "has_spend_breakdown": spend_total_st > 0,
             "monthly_bars": monthly_bars,
             "top_destinations": top_destinations,
@@ -3225,6 +3595,12 @@ def funds_dashboard(
             "df": df,
             "dt": dt,
             "toast": toast,
+            "spend_position": spend_position,
+            "cost_efficiency": cost_efficiency,
+            "revisions": revisions,
+            "plan": plan_result,
+            "plan_dest": plan_dest,
+            "plan_weight_kg": plan_weight_kg or "",
         },
     )
 
@@ -3244,6 +3620,11 @@ def funds_budget_post(request: Request, year: int = Form(...), allocated_amount:
         raise HTTPException(status_code=400, detail="Budget cannot be negative.")
     now = utcnow_iso()
     with closing(get_conn()) as conn:
+        prev_row = conn.execute(
+            f"SELECT allocated_amount FROM {FUNDS_ANNUAL_TABLE} WHERE year = ?",
+            (y,),
+        ).fetchone()
+        prev = float(prev_row["allocated_amount"]) if prev_row else 0.0
         conn.execute(
             f"""
             INSERT INTO {FUNDS_ANNUAL_TABLE} (year, allocated_amount, updated_at)
@@ -3254,8 +3635,92 @@ def funds_budget_post(request: Request, year: int = Form(...), allocated_amount:
             """,
             (y, amt, now),
         )
+        # Record the change so the revision list stays complete (base sets and
+        # amendments live in the same audit trail).
+        if abs(amt - prev) > 0.5:
+            conn.execute(
+                f"""
+                INSERT INTO {FUNDS_REVISIONS_TABLE}
+                    (year, delta_amount, new_total, kind, note, actor, at)
+                VALUES (?, ?, ?, 'set', '', ?, ?)
+                """,
+                (y, amt - prev, amt, "admin", now),
+            )
         conn.commit()
     return RedirectResponse(url=f"/admin/funds/dashboard?year={y}&toast=budget", status_code=303)
+
+
+@app.post("/admin/funds/amend")
+def funds_amend_post(
+    request: Request,
+    year: int = Form(...),
+    delta_amount: str = Form(...),
+    note: str = Form(""),
+    pin: str = Form(""),
+):
+    """Mid-year allocation amendment. Protected by FUNDS_AMEND_PIN (default 232343)
+    so casual edits can't move rupees around the balance bar. Adds `delta_amount`
+    (can be negative to withdraw) to the year's running allocation and appends an
+    entry to the revision log so history stays visible."""
+    if not request.session.get("admin_authenticated"):
+        return RedirectResponse(url=_admin_login_url("/admin/funds/amend"), status_code=307)
+    if not request.session.get("funds_portal_ok"):
+        return RedirectResponse(url="/admin/funds/pin", status_code=303)
+
+    y = _clamp_report_year(year)
+    if (pin or "").strip() != FUNDS_AMEND_PIN:
+        return RedirectResponse(
+            url=f"/admin/funds/dashboard?year={y}&toast=amend_pin",
+            status_code=303,
+        )
+
+    try:
+        delta = float(str(delta_amount).strip().replace(",", "").replace("₹", ""))
+    except ValueError:
+        raise HTTPException(status_code=400, detail="Invalid amendment amount.")
+    if abs(delta) < 0.5:
+        return RedirectResponse(
+            url=f"/admin/funds/dashboard?year={y}&toast=amend_zero",
+            status_code=303,
+        )
+
+    note_txt = (note or "").strip()[:200]
+    now = utcnow_iso()
+    with closing(get_conn()) as conn:
+        row = conn.execute(
+            f"SELECT allocated_amount FROM {FUNDS_ANNUAL_TABLE} WHERE year = ?",
+            (y,),
+        ).fetchone()
+        prev = float(row["allocated_amount"]) if row else 0.0
+        new_total = prev + delta
+        if new_total < 0:
+            return RedirectResponse(
+                url=f"/admin/funds/dashboard?year={y}&toast=amend_negative",
+                status_code=303,
+            )
+        conn.execute(
+            f"""
+            INSERT INTO {FUNDS_ANNUAL_TABLE} (year, allocated_amount, updated_at)
+            VALUES (?, ?, ?)
+            ON CONFLICT(year) DO UPDATE SET
+              allocated_amount = excluded.allocated_amount,
+              updated_at = excluded.updated_at
+            """,
+            (y, new_total, now),
+        )
+        conn.execute(
+            f"""
+            INSERT INTO {FUNDS_REVISIONS_TABLE}
+                (year, delta_amount, new_total, kind, note, actor, at)
+            VALUES (?, ?, ?, 'amend', ?, ?, ?)
+            """,
+            (y, delta, new_total, note_txt, "admin", now),
+        )
+        conn.commit()
+    return RedirectResponse(
+        url=f"/admin/funds/dashboard?year={y}&toast=amend",
+        status_code=303,
+    )
 
 
 @app.post("/admin/status/{token}")

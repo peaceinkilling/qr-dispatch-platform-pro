@@ -23,6 +23,14 @@
 {% block content %}
   {% if toast == "budget" %}
     <div class="mb-6 rounded-xl border border-emerald-500/30 bg-emerald-500/10 px-4 py-3 text-sm text-emerald-50">Annual allocation saved for {{ year }}.</div>
+  {% elif toast == "amend" %}
+    <div class="mb-6 rounded-xl border border-emerald-500/30 bg-emerald-500/10 px-4 py-3 text-sm text-emerald-50">Allocation amended for {{ year }}. Revision history updated.</div>
+  {% elif toast == "amend_pin" %}
+    <div class="mb-6 rounded-xl border border-rose-500/30 bg-rose-500/10 px-4 py-3 text-sm text-rose-50">Amendment PIN was incorrect. No changes saved.</div>
+  {% elif toast == "amend_zero" %}
+    <div class="mb-6 rounded-xl border border-amber-500/30 bg-amber-500/10 px-4 py-3 text-sm text-amber-50">Amendment amount was zero — nothing recorded.</div>
+  {% elif toast == "amend_negative" %}
+    <div class="mb-6 rounded-xl border border-rose-500/30 bg-rose-500/10 px-4 py-3 text-sm text-rose-50">That amendment would push the allocation below zero. Not saved.</div>
   {% endif %}
 
   <section class="funds-hero glass-strong p-5 sm:p-7 mb-6 rd-26 reveal relative overflow-hidden">
@@ -97,45 +105,69 @@
 
       <div class="xl:col-span-5 grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-1 gap-5">
         <div class="funds-panel">
-          <div class="funds-panel-title">Spend by status</div>
-          {% if has_spend_breakdown %}
-            <div class="funds-donut-wrap">
-              <div class="funds-donut" style="background: {{ donut_spend_style | e }};"></div>
-              <ul class="funds-donut-legend">
-                {% for seg in status_spend_segments %}
-                  {% if seg.pct > 0 %}
-                    <li>
-                      <span class="funds-dot" style="background: {{ seg.color }};"></span>
-                      <span>{{ seg.status }}</span>
-                      <span class="funds-legend-amt">{{ seg.amount_display }} ({{ seg.pct }}%)</span>
-                    </li>
-                  {% endif %}
-                {% endfor %}
-              </ul>
+          <div class="funds-panel-title">Spend position</div>
+          <p class="muted2 text-xs mt-1 mb-3">
+            Realized = money already out (Delivered). In-flight = committed but still moving (On Route + Delayed).
+          </p>
+          {% if spend_position.has_data %}
+            <div class="funds-pos-bar" role="img"
+                 aria-label="Realized {{ spend_position.realized_pct_of_spend }}%, in-flight {{ spend_position.in_flight_pct_of_spend }}%">
+              {% if spend_position.realized_pct_of_spend > 0 %}
+                <div class="funds-pos-seg funds-pos-seg--realized"
+                     style="width: {{ spend_position.realized_pct_of_spend }}%;"
+                     title="Realized: {{ spend_position.realized_display }} ({{ spend_position.realized_pct_of_spend }}%)"></div>
+              {% endif %}
+              {% if spend_position.in_flight_pct_of_spend > 0 %}
+                <div class="funds-pos-seg funds-pos-seg--inflight"
+                     style="width: {{ spend_position.in_flight_pct_of_spend }}%;"
+                     title="In-flight: {{ spend_position.in_flight_display }} ({{ spend_position.in_flight_pct_of_spend }}%)"></div>
+              {% endif %}
             </div>
+            <ul class="funds-pos-legend mt-3 space-y-2">
+              <li>
+                <span class="funds-dot funds-dot--realized"></span>
+                <span class="text-white/85">Realized</span>
+                <span class="funds-pos-amt font-mono">{{ spend_position.realized_display }}</span>
+                <span class="funds-pos-sub muted2">
+                  {{ spend_position.realized_pct_of_spend }}% of spend{% if spend_position.realized_pct_of_budget is not none %} · {{ spend_position.realized_pct_of_budget }}% of budget{% endif %}
+                </span>
+              </li>
+              <li>
+                <span class="funds-dot funds-dot--inflight"></span>
+                <span class="text-white/85">In-flight</span>
+                <span class="funds-pos-amt font-mono">{{ spend_position.in_flight_display }}</span>
+                <span class="funds-pos-sub muted2">
+                  {{ spend_position.in_flight_pct_of_spend }}% of spend{% if spend_position.in_flight_pct_of_budget is not none %} · {{ spend_position.in_flight_pct_of_budget }}% of budget{% endif %}
+                </span>
+              </li>
+            </ul>
           {% else %}
             <p class="muted2 text-sm mt-2">No recorded costs yet for this year.</p>
           {% endif %}
         </div>
         <div class="funds-panel">
-          <div class="funds-panel-title">Dispatch mix (volume)</div>
-          <div class="funds-stack-bar" role="img" aria-label="Share of dispatches by status">
-            {% for row in status_mix %}
-              {% if row.pct > 0 %}
-                <div class="funds-stack-seg" style="width: {{ row.pct }}%; background: {{ row.color }};" title="{{ row.status }}: {{ row.count }} ({{ row.pct }}%)"></div>
-              {% endif %}
-            {% endfor %}
-          </div>
-          <ul class="funds-mix-legend mt-3 space-y-1.5">
-            {% for row in status_mix %}
-              <li class="funds-mix-row">
-                <span class="funds-dot" style="background: {{ row.color }};"></span>
-                <span>{{ row.status }}</span>
-                <span class="funds-mix-count">{{ row.count }}</span>
-                <span class="funds-mix-pct">{{ row.pct }}%</span>
-              </li>
-            {% endfor %}
-          </ul>
+          <div class="funds-panel-title">Cost per tonne — priciest lanes</div>
+          <p class="muted2 text-xs mt-1 mb-3">
+            Based on weighted average. Highest ₹/tonne lanes surface first so you can renegotiate the ones worth the effort.
+          </p>
+          {% if cost_efficiency %}
+            <ul class="space-y-2.5">
+              {% for lane in cost_efficiency %}
+                <li>
+                  <div class="flex justify-between text-xs gap-2 mb-1">
+                    <span class="text-white/90 truncate font-medium" title="{{ lane.name }}">{{ lane.name }}</span>
+                    <span class="font-mono text-amber-200 shrink-0">{{ lane.rate_display }}</span>
+                  </div>
+                  <div class="funds-hbar-track">
+                    <div class="funds-hbar-fill funds-hbar-fill--rate" style="width: {{ lane.w_pct }}%;"></div>
+                  </div>
+                  <div class="text-[11px] muted2 mt-0.5">{{ lane.n }} trip{% if lane.n != 1 %}s{% endif %}</div>
+                </li>
+              {% endfor %}
+            </ul>
+          {% else %}
+            <p class="muted2 text-sm mt-2">Not enough weighed+costed trips to rank lanes yet.</p>
+          {% endif %}
         </div>
       </div>
     </div>
@@ -185,14 +217,14 @@
     <div class="mt-6">
       <div class="funds-panel-title mb-3">Quarterly spend ({{ year }})</div>
       <div class="space-y-2">
-        {% for q in quarters_out %}
+        {% for qt in quarters_out %}
           <div>
             <div class="flex justify-between text-xs mb-1">
-              <span class="text-white/85 font-semibold">{{ q.label }}</span>
-              <span class="font-mono text-sky-200">{{ q.amount_display }}</span>
+              <span class="text-white/85 font-semibold">{{ qt.label }}</span>
+              <span class="font-mono text-sky-200">{{ qt.amount_display }}</span>
             </div>
             <div class="funds-hbar-track funds-hbar-track--q">
-              <div class="funds-hbar-fill funds-hbar-fill--q" style="width: {{ q.w_pct }}%;"></div>
+              <div class="funds-hbar-fill funds-hbar-fill--q" style="width: {{ qt.w_pct }}%;"></div>
             </div>
           </div>
         {% endfor %}
@@ -237,29 +269,147 @@
     </div>
   </div>
 
+  <div class="grid grid-cols-1 xl:grid-cols-5 gap-4 mb-6">
+    <div class="glass-strong p-4 sm:p-6 card-hover reveal xl:col-span-3">
+      <h2 class="title text-lg font-bold mb-1">Annual allocation</h2>
+      <p class="muted2 text-xs mb-4">
+        Sets the ceiling for a given financial year. Use the amendment box on the right for mid-year additions — it keeps a history trail instead of overwriting.
+      </p>
+      <form method="post" action="/admin/funds/budget" class="grid grid-cols-1 md:grid-cols-3 gap-4 items-end">
+        <div>
+          <label class="muted text-sm" for="budget_year">Year</label>
+          <input id="budget_year" class="field mt-2" type="number" name="year" min="2000" max="2100" value="{{ year }}" required />
+        </div>
+        <div class="md:col-span-2">
+          <label class="muted text-sm" for="allocated_amount">Allocated funds (₹)</label>
+          <input
+            id="allocated_amount"
+            class="field mt-2"
+            name="allocated_amount"
+            type="text"
+            inputmode="decimal"
+            value="{{ allocated_input | e }}"
+            required
+          />
+        </div>
+        <div class="md:col-span-3">
+          <button type="submit" class="btn btn-primary">Save allocation</button>
+        </div>
+      </form>
+      {% if revisions %}
+        <div class="mt-6">
+          <div class="funds-panel-title text-sm mb-2">Allocation history · {{ year }}</div>
+          <ul class="funds-revision-list">
+            {% for rv in revisions %}
+              <li class="funds-revision-row">
+                <span class="funds-revision-dot {% if rv.delta_is_positive %}funds-revision-dot--up{% else %}funds-revision-dot--down{% endif %}" aria-hidden="true"></span>
+                <span class="funds-revision-delta font-mono {% if rv.delta_is_positive %}text-emerald-200{% else %}text-rose-200{% endif %}">{{ rv.delta_display }}</span>
+                <span class="funds-revision-total muted2 font-mono">→ {{ rv.new_total_display }}</span>
+                <span class="funds-revision-kind text-[11px] uppercase tracking-wide">{{ rv.kind }}</span>
+                <span class="funds-revision-note muted2">{% if rv.note %}{{ rv.note }}{% else %}—{% endif %}</span>
+                <span class="funds-revision-when muted2 text-xs">{{ rv.at_display or rv.at }}</span>
+              </li>
+            {% endfor %}
+          </ul>
+        </div>
+      {% endif %}
+    </div>
+
+    <div class="glass-strong p-4 sm:p-6 card-hover reveal xl:col-span-2">
+      <h2 class="title text-lg font-bold mb-1">Amend allocation</h2>
+      <p class="muted2 text-xs mb-4">
+        Adds (or subtracts) from this year's allocation without wiping it. Requires the amendment PIN. Use for supplementary grants or reversals mid-year.
+      </p>
+      <form method="post" action="/admin/funds/amend" class="space-y-3">
+        <input type="hidden" name="year" value="{{ year }}" />
+        <div>
+          <label class="muted text-sm" for="delta_amount">Amount (₹) <span class="muted2">· negative to withdraw</span></label>
+          <input id="delta_amount" class="field mt-2" name="delta_amount" type="text" inputmode="decimal" placeholder="e.g. 500000" required />
+        </div>
+        <div>
+          <label class="muted text-sm" for="amend_note">Reason <span class="muted2">(optional)</span></label>
+          <input id="amend_note" class="field mt-2" name="note" type="text" maxlength="200" placeholder="Supplementary grant, Q2 top-up, …" />
+        </div>
+        <div>
+          <label class="muted text-sm" for="amend_pin">Amendment PIN</label>
+          <input id="amend_pin" class="field mt-2" name="pin" type="password" autocomplete="off" required />
+        </div>
+        <div class="pt-1">
+          <button type="submit" class="btn btn-primary w-full">Apply amendment</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
   <div class="glass-strong p-4 sm:p-6 mb-6 card-hover reveal">
-    <h2 class="title text-lg font-bold mb-4">Annual allocation</h2>
-    <form method="post" action="/admin/funds/budget" class="grid grid-cols-1 md:grid-cols-3 gap-4 items-end">
-      <div>
-        <label class="muted text-sm" for="budget_year">Year</label>
-        <input id="budget_year" class="field mt-2" type="number" name="year" min="2000" max="2100" value="{{ year }}" required />
-      </div>
+    <div class="flex flex-wrap items-start justify-between gap-3 mb-1">
+      <h2 class="title text-lg font-bold">Plan a CHT</h2>
+      {% if plan and plan.source_kind %}
+        <span class="funds-pill {% if plan.source_kind == 'history' %}funds-pill--ok{% elif plan.source_kind == 'blended' %}funds-pill--ok{% else %}funds-pill--muted{% endif %}">
+          {% if plan.source_kind == 'history' %}Historical rate
+          {% elif plan.source_kind == 'blended' %}History + distance blend
+          {% else %}Distance model{% endif %}
+        </span>
+      {% endif %}
+    </div>
+    <p class="muted2 text-xs mb-4">
+      The rate depends on the truck class the load books, not a flat ₹/kg·km. Heavier loads move to a larger truck with a different ₹/km. Prior trips on the same lane &amp; class are blended with the distance model when available.
+    </p>
+    <form method="get" action="/admin/funds/dashboard" class="grid grid-cols-1 md:grid-cols-4 gap-3 items-end">
+      <input type="hidden" name="year" value="{{ year }}" />
       <div class="md:col-span-2">
-        <label class="muted text-sm" for="allocated_amount">Allocated funds (₹)</label>
-        <input
-          id="allocated_amount"
-          class="field mt-2"
-          name="allocated_amount"
-          type="text"
-          inputmode="decimal"
-          value="{{ allocated_input | e }}"
-          required
-        />
+        <label class="muted text-sm" for="plan_dest">Destination or PIN</label>
+        <input id="plan_dest" class="field mt-2" name="plan_dest" type="text" value="{{ plan_dest | e }}" placeholder="e.g. Bhuj or 370001" />
       </div>
-      <div class="md:col-span-3">
-        <button type="submit" class="btn btn-primary">Save allocation</button>
+      <div>
+        <label class="muted text-sm" for="plan_weight_kg">Load (kg)</label>
+        <input id="plan_weight_kg" class="field mt-2" name="plan_weight_kg" type="number" min="0" step="100" value="{{ plan_weight_kg | e }}" placeholder="8000" />
+      </div>
+      <div>
+        <button type="submit" class="btn btn-primary w-full">Estimate</button>
       </div>
     </form>
+
+    {% if plan and plan.requested %}
+      {% if plan.error %}
+        <div class="mt-5 rounded-xl border border-amber-500/30 bg-amber-500/10 px-4 py-3 text-sm text-amber-50">{{ plan.error }}</div>
+      {% elif plan.valid %}
+        {% if plan.truck_class %}
+          <div class="mt-4 flex flex-wrap gap-2 items-center">
+            <span class="funds-pill funds-pill--muted">{{ plan.truck_class }}</span>
+            <span class="funds-pill funds-pill--muted">Rate: {{ plan.rate_per_km_display }}</span>
+            {% if plan.distance_km %}<span class="funds-pill funds-pill--muted">~{{ plan.distance_km }} road km</span>{% endif %}
+            <span class="funds-pill funds-pill--muted">Load: {{ plan.tonnes_display }}</span>
+          </div>
+        {% endif %}
+        <div class="mt-4 grid grid-cols-1 md:grid-cols-3 gap-3">
+          <div class="funds-plan-card">
+            <div class="funds-plan-card-kicker">Estimated cost</div>
+            <div class="funds-plan-card-value">{{ plan.estimated_cost_display }}</div>
+            <div class="funds-plan-card-meta">
+              Effective {{ plan.rate_per_tonne_display }}
+              {% if plan.share_of_budget_pct is defined and plan.share_of_budget_pct is not none %}
+                · {{ plan.share_of_budget_pct }}% of allocation
+              {% endif %}
+            </div>
+          </div>
+          <div class="funds-plan-card">
+            <div class="funds-plan-card-kicker">Projected balance</div>
+            <div class="funds-plan-card-value {% if plan.fits_in_budget == False %}text-rose-200{% elif plan.fits_in_budget %}text-emerald-200{% endif %}">{{ plan.projected_balance_display }}</div>
+            <div class="funds-plan-card-meta">
+              After this CHT, if cut today.
+              {% if plan.fits_in_budget == False %} Over budget.{% endif %}
+            </div>
+          </div>
+          <div class="funds-plan-card">
+            <div class="funds-plan-card-kicker">Runway at this rate</div>
+            <div class="funds-plan-card-value">{{ plan.how_many_more }}</div>
+            <div class="funds-plan-card-meta">More CHTs of this type fit in the remaining balance.</div>
+          </div>
+        </div>
+        <p class="funds-plan-note mt-4">{{ plan.source }}</p>
+      {% endif %}
+    {% endif %}
   </div>
 
   <div class="glass-strong p-4 sm:p-6 mb-6 card-hover reveal">

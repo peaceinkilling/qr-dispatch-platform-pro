@@ -4347,3 +4347,166 @@ html:not(.theme-light) .detail-load-cab-shell {
   }
 }
 
+/* ----- Funds portal: spend position split bar ------------------------------- */
+.funds-pos-bar {
+  display: flex;
+  height: 14px;
+  width: 100%;
+  border-radius: 999px;
+  overflow: hidden;
+  background: rgba(15, 23, 42, 0.75);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+.funds-pos-seg {
+  height: 100%;
+  transition: width 0.45s ease;
+}
+
+.funds-pos-seg--realized {
+  background: linear-gradient(90deg, #6366f1, #8b5cf6);
+}
+
+.funds-pos-seg--inflight {
+  background: linear-gradient(90deg, #10b981, #34d399);
+}
+
+.funds-pos-legend {
+  font-size: 0.82rem;
+  line-height: 1.3;
+}
+
+.funds-pos-legend > li {
+  display: grid;
+  grid-template-columns: 14px auto 1fr auto;
+  column-gap: 0.6rem;
+  align-items: baseline;
+}
+
+.funds-pos-amt {
+  text-align: right;
+  color: rgba(255, 255, 255, 0.92);
+  font-size: 0.85rem;
+}
+
+.funds-pos-sub {
+  grid-column: 2 / -1;
+  font-size: 0.72rem;
+  margin-top: 0.15rem;
+}
+
+.funds-dot--realized {
+  background: #8b5cf6;
+  display: inline-block;
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  align-self: center;
+}
+
+.funds-dot--inflight {
+  background: #10b981;
+  display: inline-block;
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  align-self: center;
+}
+
+/* Rate-bar tint for "cost per tonne" ranking (amber = expensive lane). */
+.funds-hbar-fill--rate {
+  background: linear-gradient(90deg, #f59e0b, #fbbf24);
+}
+
+/* ----- Funds portal: revision (allocation history) list --------------------- */
+.funds-revision-list {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.funds-revision-row {
+  display: grid;
+  grid-template-columns: 10px minmax(88px, auto) minmax(120px, auto) auto 1fr auto;
+  column-gap: 0.7rem;
+  align-items: center;
+  padding: 0.55rem 0.7rem;
+  border: 1px solid rgba(255, 255, 255, 0.07);
+  border-radius: 10px;
+  background: rgba(15, 23, 42, 0.45);
+}
+
+.funds-revision-dot {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  display: inline-block;
+}
+
+.funds-revision-dot--up {
+  background: #10b981;
+  box-shadow: 0 0 0 3px rgba(16, 185, 129, 0.18);
+}
+
+.funds-revision-dot--down {
+  background: #ef4444;
+  box-shadow: 0 0 0 3px rgba(239, 68, 68, 0.18);
+}
+
+.funds-revision-kind {
+  color: rgba(255, 255, 255, 0.55);
+  font-weight: 600;
+}
+
+.funds-revision-note {
+  font-size: 0.82rem;
+  color: rgba(255, 255, 255, 0.78);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.funds-revision-when {
+  white-space: nowrap;
+}
+
+@media (max-width: 640px) {
+  .funds-revision-row {
+    grid-template-columns: 10px 1fr auto;
+    row-gap: 0.25rem;
+  }
+  .funds-revision-total,
+  .funds-revision-kind {
+    grid-column: 2 / 3;
+  }
+  .funds-revision-note,
+  .funds-revision-when {
+    grid-column: 1 / -1;
+    text-align: left;
+  }
+}
+
+/* Light-theme tweaks --------------------------------------------------------- */
+html.theme-light .funds-pos-bar {
+  background: rgba(226, 232, 240, 0.9);
+  border-color: rgba(15, 23, 42, 0.08);
+}
+
+html.theme-light .funds-pos-amt,
+html.theme-light .funds-pos-legend > li > span:nth-child(2) {
+  color: rgba(15, 23, 42, 0.85);
+}
+
+html.theme-light .funds-revision-row {
+  background: rgba(255, 255, 255, 0.85);
+  border-color: rgba(15, 23, 42, 0.08);
+}
+
+html.theme-light .funds-revision-note,
+html.theme-light .funds-revision-kind {
+  color: rgba(15, 23, 42, 0.75);
+}
+
