@@ -1609,32 +1609,38 @@ def init_db() -> None:
             transit = rng.randint(dmin, dmax)
 
             if seed_status == "Delivered":
-                # Completed in the last week or two — ETA just in the past,
-                # dispatched a transit-window earlier.
-                eta_dt = today_d - timedelta(days=rng.randint(1, 10))
-                dispatch_dt = eta_dt - timedelta(days=transit + rng.randint(0, 2))
+                # Completed very recently — most within the last week.
+                eta_dt = today_d - timedelta(days=rng.randint(1, 6))
+                dispatch_dt = eta_dt - timedelta(days=transit + rng.randint(0, 1))
             elif seed_status == "Delayed":
-                # ETA just slipped into the past; still in transit.
-                eta_dt = today_d - timedelta(days=rng.randint(1, 3))
-                dispatch_dt = eta_dt - timedelta(days=transit + rng.randint(0, 2))
+                # ETA slipped 1–2 days ago; still in transit.
+                eta_dt = today_d - timedelta(days=rng.randint(1, 2))
+                dispatch_dt = eta_dt - timedelta(days=transit + rng.randint(0, 1))
             else:
-                # On Route — three realistic buckets biased toward "this week":
-                #   A) Dispatched today / yesterday, ETA later this week or next
-                #   B) Dispatched 2–4 days ago, mid-transit
-                #   C) Dispatched 5–9 days ago, long-haul, ETA still ahead
-                bucket = rng.random()
-                if bucket < 0.45:
-                    dispatch_dt = today_d - timedelta(days=rng.randint(0, 1))
-                    eta_dt = dispatch_dt + timedelta(days=transit + rng.randint(0, 2))
-                elif bucket < 0.80:
-                    dispatch_dt = today_d - timedelta(days=rng.randint(2, 4))
-                    eta_dt = dispatch_dt + timedelta(days=transit + rng.randint(0, 2))
+                # On Route — heavily biased toward dispatches from this week.
+                # ~35% are "arriving today / tomorrow" for live ETA badges.
+                if rng.random() < 0.35:
+                    eta_dt = today_d + timedelta(days=rng.randint(0, 1))
+                    dispatch_dt = eta_dt - timedelta(days=transit + rng.randint(0, 1))
+                    if dispatch_dt > today_d:
+                        dispatch_dt = today_d
                 else:
-                    dispatch_dt = today_d - timedelta(days=rng.randint(5, 9))
-                    eta_dt = dispatch_dt + timedelta(days=transit + rng.randint(1, 4))
-                # On-route rows must still have ETA strictly in the future.
-                if eta_dt <= today_d:
-                    eta_dt = today_d + timedelta(days=rng.randint(2, max(3, transit)))
+                    bucket = rng.random()
+                    if bucket < 0.55:
+                        # Dispatched today or yesterday.
+                        dispatch_dt = today_d - timedelta(days=rng.randint(0, 1))
+                        eta_dt = dispatch_dt + timedelta(days=transit + rng.randint(0, 1))
+                    elif bucket < 0.85:
+                        # Mid-transit, dispatched 2–3 days ago.
+                        dispatch_dt = today_d - timedelta(days=rng.randint(2, 3))
+                        eta_dt = dispatch_dt + timedelta(days=transit + rng.randint(0, 1))
+                    else:
+                        # Long-haul still ahead, dispatched 4–6 days ago.
+                        dispatch_dt = today_d - timedelta(days=rng.randint(4, 6))
+                        eta_dt = dispatch_dt + timedelta(days=transit + rng.randint(1, 2))
+                # On-route rows must still have ETA on or after today.
+                if eta_dt < today_d:
+                    eta_dt = today_d + timedelta(days=rng.randint(1, max(2, transit // 2)))
 
             # Safety: ETA must be after dispatch and dispatch not in the future.
             if dispatch_dt > today_d:
