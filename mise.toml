@@ -1,0 +1,5 @@
+# Railway/Nixpacks uses mise to install Python from runtime.txt.
+# python@3.11.10 has no GitHub artifact attestation yet, which breaks
+# recent mise builds unless verification is disabled.
+[settings]
+python.github_attestations = false
